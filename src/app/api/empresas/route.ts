@@ -2,6 +2,7 @@ import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ok, created, serverError, unauthorized, badRequest } from "@/lib/api-response";
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 
 const createSchema = z.object({
   codigoInterno: z.string().optional(),
@@ -44,41 +45,60 @@ export async function GET(request: Request) {
     const { usuario } = await requireAuth();
     const { searchParams } = new URL(request.url);
 
-    const search = searchParams.get("search") || "";
-    const grupoId = searchParams.get("grupoId");
-    const regimeId = searchParams.get("regimeId");
-    const ativa = searchParams.get("ativa");
+    const search = searchParams.get("search")?.trim() ?? "";
+    const grupoId = searchParams.get("grupoId") ?? "";
+    const perPageRaw = searchParams.get("perPage") ?? "25";
+    const page = Math.max(1, parseInt(searchParams.get("page") ?? "1") || 1);
+    const perPage = perPageRaw === "all" ? null : Math.max(10, Math.min(500, parseInt(perPageRaw) || 25));
 
-    const empresas = await prisma.empresa.findMany({
-      where: {
-        escritorioId: usuario.escritorioId,
-        ativa: ativa === "false" ? false : true,
-        ...(grupoId && {
-          grupos: { some: { grupoId } },
-        }),
-        ...(regimeId && { regimeTributarioId: regimeId }),
-        ...(search && {
+    // Role-based base filter — mirrors the same logic in the server page component
+    const isPrivileged = usuario.perfil === "ADMIN" || usuario.perfil === "GERENTE";
+    const baseWhere: Prisma.EmpresaWhereInput = isPrivileged
+      ? { escritorioId: usuario.escritorioId, ativa: true }
+      : usuario.perfil === "CONFERENTE"
+      ? { escritorioId: usuario.escritorioId, ativa: true, respConferenciaId: usuario.id }
+      : { escritorioId: usuario.escritorioId, ativa: true, OR: [{ respBuscaId: usuario.id }, { respElaboracaoId: usuario.id }] };
+
+    // AND composition avoids silent OR-key collision when combining role filter + search + grupo
+    const where: Prisma.EmpresaWhereInput = {
+      AND: [
+        baseWhere,
+        ...(search ? [{
           OR: [
-            { razaoSocial: { contains: search, mode: "insensitive" } },
-            { nomeFantasia: { contains: search, mode: "insensitive" } },
+            { razaoSocial: { contains: search, mode: "insensitive" as const } },
+            { codigoInterno: { contains: search, mode: "insensitive" as const } },
             { cnpj: { contains: search } },
           ],
-        }),
-      },
-      include: {
-        regimeTributario: true,
-        tipoAtividade: true,
-        prioridade: true,
-        respBusca: { select: { id: true, nome: true, avatar: true } },
-        respElaboracao: { select: { id: true, nome: true, avatar: true } },
-        respConferencia: { select: { id: true, nome: true, avatar: true } },
-        grupos: { include: { grupo: true } },
-        etiquetas: { include: { etiqueta: true } },
-      },
-      orderBy: { razaoSocial: "asc" },
-    });
+        }] : []),
+        ...(grupoId ? [{ grupos: { some: { grupoId } } }] : []),
+      ],
+    };
 
-    return ok(empresas);
+    const include = {
+      regimeTributario: true,
+      tipoAtividade: true,
+      prioridade: true,
+      respBusca: { select: { id: true, nome: true, avatar: true } },
+      respElaboracao: { select: { id: true, nome: true, avatar: true } },
+      grupos: { include: { grupo: true } },
+      etiquetas: { include: { etiqueta: true } },
+    } as const;
+
+    const [total, empresas] = await Promise.all([
+      prisma.empresa.count({ where }),
+      prisma.empresa.findMany({
+        where,
+        include,
+        orderBy: { razaoSocial: "asc" },
+        ...(perPage ? { take: perPage, skip: (page - 1) * perPage } : {}),
+      }),
+    ]);
+
+    return ok(
+      { empresas, total },
+      200,
+      { "Cache-Control": "private, max-age=5, stale-while-revalidate=30" }
+    );
   } catch (error) {
     if ((error as Error).message === "UNAUTHORIZED") return unauthorized();
     return serverError(error);

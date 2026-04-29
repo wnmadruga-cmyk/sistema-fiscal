@@ -3,21 +3,19 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Building2, Edit, CalendarDays, Download, Upload, FileSpreadsheet, ChevronLeft, ChevronRight } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Plus, Search, Building2, Edit, CalendarDays,
+  Download, Upload, FileSpreadsheet, ChevronLeft, ChevronRight,
+} from "lucide-react";
 import { formatDocument } from "@/lib/utils";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { UserAvatar } from "@/components/shared/UserAvatar";
-import type {
-  Empresa,
-  RegimeTributario,
-  TipoAtividade,
-  Prioridade,
-  Grupo,
-  Etiqueta,
-} from "@prisma/client";
+import type { Empresa, RegimeTributario, TipoAtividade, Prioridade, Grupo, Etiqueta } from "@prisma/client";
 import { toast } from "sonner";
 
 type EmpresaComRelacoes = Empresa & {
@@ -31,29 +29,30 @@ type EmpresaComRelacoes = Empresa & {
 };
 
 interface EmpresasPageContentProps {
-  empresas: EmpresaComRelacoes[];
   grupos: Grupo[];
   regimes: RegimeTributario[];
-  pagination: { page: number; perPageRaw: string; total: number; totalPages: number };
-  searchInicial: string;
-  grupoFiltroInicial: string;
 }
 
-export function EmpresasPageContent({
-  empresas,
-  grupos,
-  pagination,
-  searchInicial,
-  grupoFiltroInicial,
-}: EmpresasPageContentProps) {
+export function EmpresasPageContent({ grupos }: EmpresasPageContentProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [searchInput, setSearchInput] = useState(searchInicial);
 
-  // Debounced search — only push to URL after 350ms idle, and only if value changed
+  const page = Math.max(1, parseInt(searchParams.get("page") ?? "1") || 1);
+  const perPageRaw = searchParams.get("perPage") ?? "25";
+  const grupoFiltro = searchParams.get("grupoId") ?? "";
+  const searchParam = searchParams.get("search") ?? "";
+
+  // Local input state — debounced to URL
+  const [searchInput, setSearchInput] = useState(searchParam);
+
+  // Sync input if URL changes externally (e.g. browser back)
   useEffect(() => {
-    const current = searchParams.get("search") ?? "";
-    if (searchInput === current) return;
+    setSearchInput(searchParam);
+  }, [searchParam]);
+
+  // Debounce: push to URL 350ms after typing stops
+  useEffect(() => {
+    if (searchInput === searchParam) return;
     const timer = setTimeout(() => {
       const params = new URLSearchParams(searchParams.toString());
       if (searchInput) {
@@ -65,70 +64,74 @@ export function EmpresasPageContent({
       router.replace(`/empresas?${params.toString()}`);
     }, 350);
     return () => clearTimeout(timer);
-  }, [searchInput, router, searchParams]);
+  }, [searchInput, searchParam, router, searchParams]);
 
-  const handleGrupoChange = useCallback(
-    (grupoId: string) => {
-      const params = new URLSearchParams(searchParams.toString());
-      if (grupoId) {
-        params.set("grupoId", grupoId);
-      } else {
-        params.delete("grupoId");
-      }
-      params.set("page", "1");
-      router.replace(`/empresas?${params.toString()}`);
+  const { data, isLoading, isPlaceholderData } = useQuery({
+    queryKey: ["empresas-list", page, perPageRaw, searchParam, grupoFiltro],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        page: String(page),
+        perPage: perPageRaw,
+        ...(searchParam && { search: searchParam }),
+        ...(grupoFiltro && { grupoId: grupoFiltro }),
+      });
+      const res = await fetch(`/api/empresas?${params}`);
+      if (!res.ok) throw new Error("Erro ao carregar empresas");
+      const json = await res.json();
+      return json.data as { empresas: EmpresaComRelacoes[]; total: number };
     },
-    [router, searchParams]
-  );
+    staleTime: 30_000,
+    placeholderData: (prev) => prev, // keep previous data visible while loading new page
+  });
 
-  const handlePageChange = useCallback(
-    (newPage: number) => {
-      const params = new URLSearchParams(searchParams.toString());
-      params.set("page", String(newPage));
-      router.replace(`/empresas?${params.toString()}`);
-    },
-    [router, searchParams]
-  );
-
-  const handlePerPageChange = useCallback(
-    (value: string) => {
-      const params = new URLSearchParams(searchParams.toString());
-      params.set("perPage", value);
-      params.set("page", "1");
-      router.replace(`/empresas?${params.toString()}`);
-    },
-    [router, searchParams]
-  );
-
-  async function gerarCompetencias(empresaId: string) {
-    const competenciaAtual = new Date();
-    const ano = competenciaAtual.getFullYear();
-    const mes = String(competenciaAtual.getMonth() + 1).padStart(2, "0");
-    const comp = `${ano}-${mes}`;
-
-    const res = await fetch("/api/competencias", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ empresaId, competencias: [comp] }),
-    });
-
-    if (res.ok) {
-      toast.success("Competência gerada com sucesso!");
-      router.push(`/competencias?empresaId=${empresaId}`);
-    } else {
-      toast.error("Erro ao gerar competência");
-    }
-  }
-
-  const { page, perPageRaw, total, totalPages } = pagination;
+  const empresas = data?.empresas ?? [];
+  const total = data?.total ?? 0;
   const perPageNum = perPageRaw === "all" ? total : parseInt(perPageRaw) || 25;
+  const totalPages = perPageRaw === "all" ? 1 : Math.ceil(total / perPageNum);
   const startItem = total === 0 ? 0 : (page - 1) * perPageNum + 1;
   const endItem = Math.min(page * perPageNum, total);
 
-  // Export URL uses current URL search params to reflect active filters
-  const exportSearch = searchParams.get("search") ?? "";
-  const exportGrupoId = searchParams.get("grupoId") ?? "";
-  const exportHref = `/api/empresas/export${exportSearch || exportGrupoId ? `?search=${encodeURIComponent(exportSearch)}&grupoId=${encodeURIComponent(exportGrupoId)}` : ""}`;
+  const navigate = useCallback(
+    (updates: Record<string, string | null>) => {
+      const params = new URLSearchParams(searchParams.toString());
+      for (const [key, val] of Object.entries(updates)) {
+        if (val === null || val === "") {
+          params.delete(key);
+        } else {
+          params.set(key, val);
+        }
+      }
+      router.replace(`/empresas?${params.toString()}`);
+    },
+    [router, searchParams]
+  );
+
+  const [gerandoId, setGerandoId] = useState<string | null>(null);
+
+  async function gerarCompetencias(empresaId: string) {
+    setGerandoId(empresaId);
+    const ano = new Date().getFullYear();
+    const mes = String(new Date().getMonth() + 1).padStart(2, "0");
+    const comp = `${ano}-${mes}`;
+
+    try {
+      const res = await fetch("/api/competencias", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ empresaId, competencias: [comp] }),
+      });
+      if (res.ok) {
+        toast.success("Competência gerada com sucesso!");
+        router.push(`/competencias?empresaId=${empresaId}`);
+      } else {
+        toast.error("Erro ao gerar competência");
+      }
+    } finally {
+      setGerandoId(null);
+    }
+  }
+
+  const exportHref = `/api/empresas/export${searchParam || grupoFiltro ? `?search=${encodeURIComponent(searchParam)}&grupoId=${encodeURIComponent(grupoFiltro)}` : ""}`;
 
   return (
     <div className="p-6 space-y-6">
@@ -137,7 +140,7 @@ export function EmpresasPageContent({
         <div>
           <h1 className="text-2xl font-bold">Empresas</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {total} empresa{total !== 1 ? "s" : ""} no total
+            {isLoading ? "Carregando..." : `${total} empresa${total !== 1 ? "s" : ""} no total`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -180,8 +183,8 @@ export function EmpresasPageContent({
           />
         </div>
         <select
-          value={grupoFiltroInicial}
-          onChange={(e) => handleGrupoChange(e.target.value)}
+          value={grupoFiltro}
+          onChange={(e) => navigate({ grupoId: e.target.value, page: "1" })}
           className="h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm"
         >
           <option value="">Todos os grupos</option>
@@ -194,7 +197,9 @@ export function EmpresasPageContent({
       </div>
 
       {/* Tabela */}
-      {empresas.length === 0 ? (
+      {isLoading && !isPlaceholderData ? (
+        <TableSkeleton />
+      ) : empresas.length === 0 ? (
         <EmptyState
           icon={Building2}
           title="Nenhuma empresa encontrada"
@@ -209,7 +214,7 @@ export function EmpresasPageContent({
           }
         />
       ) : (
-        <div className="border rounded-xl overflow-hidden">
+        <div className={`border rounded-xl overflow-hidden transition-opacity ${isPlaceholderData ? "opacity-60" : ""}`}>
           <table className="w-full text-sm">
             <thead className="bg-muted/50 border-b">
               <tr>
@@ -225,14 +230,12 @@ export function EmpresasPageContent({
               {empresas.map((empresa) => (
                 <tr key={empresa.id} className="hover:bg-muted/30 transition-colors">
                   <td className="px-4 py-3">
-                    <div>
-                      <p className="font-medium">
-                        {empresa.codigoInterno && (
-                          <span className="text-muted-foreground font-mono mr-2">{empresa.codigoInterno}</span>
-                        )}
-                        {empresa.razaoSocial}
-                      </p>
-                    </div>
+                    <p className="font-medium">
+                      {empresa.codigoInterno && (
+                        <span className="text-muted-foreground font-mono mr-2">{empresa.codigoInterno}</span>
+                      )}
+                      {empresa.razaoSocial}
+                    </p>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {empresa.cnpj
@@ -243,9 +246,7 @@ export function EmpresasPageContent({
                   </td>
                   <td className="px-4 py-3">
                     {empresa.regimeTributario && (
-                      <Badge variant="secondary">
-                        {empresa.regimeTributario.codigo}
-                      </Badge>
+                      <Badge variant="secondary">{empresa.regimeTributario.codigo}</Badge>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -263,9 +264,7 @@ export function EmpresasPageContent({
                         </span>
                       ))}
                       {empresa.grupos.length > 2 && (
-                        <span className="text-xs text-muted-foreground">
-                          +{empresa.grupos.length - 2}
-                        </span>
+                        <span className="text-xs text-muted-foreground">+{empresa.grupos.length - 2}</span>
                       )}
                     </div>
                   </td>
@@ -287,9 +286,10 @@ export function EmpresasPageContent({
                         variant="ghost"
                         size="icon"
                         onClick={() => gerarCompetencias(empresa.id)}
+                        disabled={gerandoId === empresa.id}
                         title="Gerar competência"
                       >
-                        <CalendarDays className="h-4 w-4" />
+                        <CalendarDays className={`h-4 w-4 ${gerandoId === empresa.id ? "animate-pulse" : ""}`} />
                       </Button>
                       <Link href={`/empresas/${empresa.id}`}>
                         <Button variant="ghost" size="icon">
@@ -308,7 +308,9 @@ export function EmpresasPageContent({
       {/* Paginação */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <p className="text-sm text-muted-foreground">
-          {total === 0
+          {isLoading
+            ? "Carregando..."
+            : total === 0
             ? "Nenhuma empresa"
             : perPageRaw === "all"
             ? `Exibindo todas as ${total} empresa${total !== 1 ? "s" : ""}`
@@ -320,8 +322,8 @@ export function EmpresasPageContent({
             <span className="text-muted-foreground">Por página:</span>
             <select
               value={perPageRaw}
-              onChange={(e) => handlePerPageChange(e.target.value)}
-              className="h-8 rounded-md border border-input bg-transparent px-2 py-0 text-sm"
+              onChange={(e) => navigate({ perPage: e.target.value, page: "1" })}
+              className="h-8 rounded-md border border-input bg-transparent px-2 text-sm"
             >
               <option value="25">25</option>
               <option value="100">100</option>
@@ -335,19 +337,17 @@ export function EmpresasPageContent({
                 variant="outline"
                 size="icon"
                 className="h-8 w-8"
-                onClick={() => handlePageChange(page - 1)}
+                onClick={() => navigate({ page: String(page - 1) })}
                 disabled={page <= 1}
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <span className="text-sm px-2">
-                {page} / {totalPages}
-              </span>
+              <span className="text-sm px-2">{page} / {totalPages}</span>
               <Button
                 variant="outline"
                 size="icon"
                 className="h-8 w-8"
-                onClick={() => handlePageChange(page + 1)}
+                onClick={() => navigate({ page: String(page + 1) })}
                 disabled={page >= totalPages}
               >
                 <ChevronRight className="h-4 w-4" />
@@ -356,6 +356,37 @@ export function EmpresasPageContent({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function TableSkeleton() {
+  return (
+    <div className="border rounded-xl overflow-hidden">
+      <table className="w-full text-sm">
+        <thead className="bg-muted/50 border-b">
+          <tr>
+            <th className="text-left px-4 py-3 font-medium text-muted-foreground">Empresa</th>
+            <th className="text-left px-4 py-3 font-medium text-muted-foreground">Doc</th>
+            <th className="text-left px-4 py-3 font-medium text-muted-foreground">Regime</th>
+            <th className="text-left px-4 py-3 font-medium text-muted-foreground">Grupo</th>
+            <th className="text-left px-4 py-3 font-medium text-muted-foreground">Responsável</th>
+            <th className="px-4 py-3"></th>
+          </tr>
+        </thead>
+        <tbody className="divide-y">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <tr key={i}>
+              <td className="px-4 py-3"><Skeleton className="h-4 w-48" /></td>
+              <td className="px-4 py-3"><Skeleton className="h-4 w-28" /></td>
+              <td className="px-4 py-3"><Skeleton className="h-5 w-16 rounded-full" /></td>
+              <td className="px-4 py-3"><Skeleton className="h-5 w-20 rounded" /></td>
+              <td className="px-4 py-3"><Skeleton className="h-6 w-24" /></td>
+              <td className="px-4 py-3"><Skeleton className="h-8 w-16 ml-auto" /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

@@ -175,21 +175,24 @@ async function gerar(opts: {
     }
   }
 
-  // sem-movimento herdar do mês anterior
-  await Promise.all(
-    criados.map(async (c) => {
-      const prev = competenciaAnterior(c.competencia);
-      const cardAnterior = await prisma.competenciaCard.findUnique({
-        where: { empresaId_competencia: { empresaId: c.empresaId, competencia: prev } },
-      });
-      if (cardAnterior?.semMovimento) {
-        await prisma.competenciaCard.update({
-          where: { id: c.id },
-          data: { semMovimentoMesAnterior: true },
-        });
-      }
-    })
-  );
+  // Herdar sem-movimento do mês anterior — busca em lote em vez de N findUnique individuais
+  const prevCompetencias = [...new Set(criados.map((c) => competenciaAnterior(c.competencia)))];
+  const prevSemMovimento = await prisma.competenciaCard.findMany({
+    where: {
+      competencia: { in: prevCompetencias },
+      empresaId: { in: criados.map((c) => c.empresaId) },
+      semMovimento: true,
+    },
+    select: { empresaId: true },
+  });
+  const semMovimentoSet = new Set(prevSemMovimento.map((c) => c.empresaId));
+  const idsParaAtualizar = criados.filter((c) => semMovimentoSet.has(c.empresaId)).map((c) => c.id);
+  if (idsParaAtualizar.length > 0) {
+    await prisma.competenciaCard.updateMany({
+      where: { id: { in: idsParaAtualizar } },
+      data: { semMovimentoMesAnterior: true },
+    });
+  }
 
   return created({ count: criados.length, cards: criados });
 }
