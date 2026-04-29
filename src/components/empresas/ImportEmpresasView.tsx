@@ -70,6 +70,7 @@ const COL_LABEL: Record<ImportColumn, string> = {
 type Row = {
   raw: ImportRowRaw;
   errors: Partial<Record<ImportColumn, string>>;
+  duplicado?: boolean;
 };
 
 export function ImportEmpresasView() {
@@ -122,12 +123,17 @@ export function ImportEmpresasView() {
   }
 
   const totalErros = rows.reduce((acc, r) => acc + Object.keys(r.errors).length, 0);
-  const linhasComErro = rows.filter((r) => Object.keys(r.errors).length).length;
-  const linhasOk = rows.length - linhasComErro;
+  const linhasComErro = rows.filter((r) => Object.keys(r.errors).length && !r.duplicado).length;
+  const linhasDuplicadas = rows.filter((r) => r.duplicado).length;
+  const linhasOk = rows.length - linhasComErro - linhasDuplicadas;
 
   async function salvar() {
-    if (totalErros > 0) {
+    if (linhasComErro > 0) {
       toast.error("Existem linhas com erro. Corrija antes de salvar.");
+      return;
+    }
+    if (linhasOk === 0 && linhasDuplicadas > 0) {
+      toast.info("Todas as linhas já existem no sistema. Nada a importar.");
       return;
     }
     if (!rows.length) return;
@@ -143,16 +149,19 @@ export function ImportEmpresasView() {
         toast.error(json.error ?? "Erro ao importar");
         return;
       }
-      const { criadas, erros } = json.data ?? {};
+      const { criadas, ignoradas, erros } = json.data ?? {};
+      const partes: string[] = [];
+      if (criadas > 0) partes.push(`${criadas} importada(s)`);
+      if (ignoradas > 0) partes.push(`${ignoradas} ignorada(s) (código já existe)`);
       if (erros?.length) {
-        toast.warning(`${criadas} criadas, ${erros.length} erro(s)`, {
+        toast.warning(partes.join(" · "), {
           description: erros
             .slice(0, 5)
             .map((e: { index: number; mensagem: string }) => `Linha ${e.index + 1}: ${e.mensagem}`)
             .join(" • "),
         });
       } else {
-        toast.success(`${criadas} empresa(s) importada(s)!`);
+        toast.success(partes.join(" · ") || "Importação concluída");
         router.push("/empresas");
       }
       router.refresh();
@@ -177,7 +186,13 @@ export function ImportEmpresasView() {
             {rows.length > 0 && (
               <p className="text-xs text-muted-foreground mt-0.5">
                 <span className="font-medium">{rows.length}</span> linha(s) ·{" "}
-                <span className="text-emerald-600">{linhasOk} ok</span>
+                <span className="text-emerald-600">{linhasOk} para importar</span>
+                {linhasDuplicadas > 0 && (
+                  <>
+                    {" · "}
+                    <span className="text-amber-600">{linhasDuplicadas} já existem (serão ignoradas)</span>
+                  </>
+                )}
                 {linhasComErro > 0 && (
                   <>
                     {" · "}
@@ -201,8 +216,8 @@ export function ImportEmpresasView() {
               <Button variant="outline" size="sm" onClick={reset}>
                 Trocar planilha
               </Button>
-              <Button size="sm" onClick={salvar} disabled={saving || totalErros > 0 || !rows.length}>
-                {saving ? "Salvando..." : `Salvar ${rows.length} empresa(s)`}
+              <Button size="sm" onClick={salvar} disabled={saving || linhasComErro > 0 || linhasOk === 0}>
+                {saving ? "Salvando..." : `Importar ${linhasOk} empresa(s)`}
               </Button>
             </>
           )}
@@ -259,10 +274,26 @@ export function ImportEmpresasView() {
             </thead>
             <tbody>
               {rows.map((row, i) => {
-                const hasError = Object.keys(row.errors).length > 0;
+                const hasError = Object.keys(row.errors).length > 0 && !row.duplicado;
                 return (
-                  <tr key={i} className={hasError ? "bg-red-50 dark:bg-red-950/20" : ""}>
-                    <td className="px-2 py-1 border-r border-b text-muted-foreground">{i + 1}</td>
+                  <tr
+                    key={i}
+                    className={
+                      row.duplicado
+                        ? "bg-amber-50 dark:bg-amber-950/20 opacity-60"
+                        : hasError
+                        ? "bg-red-50 dark:bg-red-950/20"
+                        : ""
+                    }
+                  >
+                    <td className="px-2 py-1 border-r border-b text-muted-foreground">
+                      {i + 1}
+                      {row.duplicado && (
+                        <span className="ml-1 text-[9px] font-medium text-amber-600 uppercase tracking-wide">
+                          dup
+                        </span>
+                      )}
+                    </td>
                     {IMPORT_COLUMNS.map((c) => {
                       const err = row.errors[c];
                       return (

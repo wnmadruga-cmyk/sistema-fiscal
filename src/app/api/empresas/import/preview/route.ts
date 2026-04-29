@@ -1,4 +1,5 @@
 import { requireAuth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { ok, unauthorized, badRequest, serverError } from "@/lib/api-response";
 import { parseCsv } from "@/lib/csv";
 import { loadLookups } from "@/lib/empresas-import-server";
@@ -87,7 +88,17 @@ export async function POST(request: Request) {
       if (k && idx[k] === undefined) idx[k] = i;
     });
 
-    const lookups = await loadLookups(escritorioId);
+    const [lookups, existingCodes] = await Promise.all([
+      loadLookups(escritorioId),
+      prisma.empresa.findMany({
+        where: { escritorioId, codigoInterno: { not: null } },
+        select: { codigoInterno: true },
+      }),
+    ]);
+
+    const codigosExistentes = new Set(
+      existingCodes.map((e) => e.codigoInterno!.trim().toLowerCase())
+    );
 
     const previewRows = rows
       .map((row) => {
@@ -101,7 +112,10 @@ export async function POST(request: Request) {
       .filter((r) => !isRowEmpty(r))
       .map((raw) => {
         const v = validateRow(raw, lookups);
-        return { raw, errors: v.errors };
+        const duplicado =
+          !!raw.codigoInterno &&
+          codigosExistentes.has(raw.codigoInterno.trim().toLowerCase());
+        return { raw, errors: v.errors, duplicado };
       });
 
     return ok({ rows: previewRows, opcoes: lookups });

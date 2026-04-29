@@ -17,13 +17,31 @@ export async function POST(request: Request) {
     if (!body || !Array.isArray(body.rows)) return badRequest("Payload inválido");
     const rawRows: ImportRowRaw[] = body.rows;
 
-    const lookups = await loadLookups(escritorioId);
+    const [lookups, existingCodesResult] = await Promise.all([
+      loadLookups(escritorioId),
+      prisma.empresa.findMany({
+        where: { escritorioId, codigoInterno: { not: null } },
+        select: { codigoInterno: true },
+      }),
+    ]);
+
+    const codigosExistentes = new Set(
+      existingCodesResult.map((e) => e.codigoInterno!.trim().toLowerCase())
+    );
 
     const erros: Array<{ index: number; mensagem: string }> = [];
     const validados: Array<{ index: number; data: NonNullable<ReturnType<typeof validateRow>["data"]> }> = [];
+    let ignoradas = 0;
 
     rawRows.forEach((raw, index) => {
       if (isRowEmpty(raw)) return;
+
+      // Pula se o codigoInterno já existe no sistema
+      if (raw.codigoInterno && codigosExistentes.has(raw.codigoInterno.trim().toLowerCase())) {
+        ignoradas++;
+        return;
+      }
+
       const v = validateRow(raw, lookups);
       if (v.data) validados.push({ index, data: v.data });
       else {
@@ -73,7 +91,7 @@ export async function POST(request: Request) {
       }
     }
 
-    return ok({ criadas, total: validados.length + erros.length, erros });
+    return ok({ criadas, ignoradas, total: rawRows.length, erros });
   } catch (error) {
     if ((error as Error).message === "UNAUTHORIZED") return unauthorized();
     return serverError(error);
