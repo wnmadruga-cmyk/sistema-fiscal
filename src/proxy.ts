@@ -2,12 +2,18 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function proxy(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request });
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
+    // Se as env vars não estão configuradas, deixa passar sem auth
+    if (!supabaseUrl || !supabaseKey) {
+      return NextResponse.next({ request });
+    }
+
+    let supabaseResponse = NextResponse.next({ request });
+
+    const supabase = createServerClient(supabaseUrl, supabaseKey, {
       cookies: {
         getAll() {
           return request.cookies.getAll();
@@ -22,31 +28,34 @@ export async function proxy(request: NextRequest) {
           );
         },
       },
+    });
+
+    let user = null;
+    try {
+      const { data } = await supabase.auth.getUser();
+      user = data.user;
+    } catch {
+      // Supabase falhou — trata como não autenticado
     }
-  );
 
-  let user = null;
-  try {
-    const { data } = await supabase.auth.getUser();
-    user = data.user;
+    const pathname = request.nextUrl.pathname;
+    const isAuthRoute = pathname.startsWith("/login");
+    const isApiRoute = pathname.startsWith("/api");
+    const isPublic = isAuthRoute || isApiRoute;
+
+    if (!user && !isPublic) {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
+
+    if (user && isAuthRoute) {
+      return NextResponse.redirect(new URL("/dashboard", request.url));
+    }
+
+    return supabaseResponse;
   } catch {
-    // Se Supabase falhar, trata como não autenticado
-  }
-
-  const pathname = request.nextUrl.pathname;
-  const isAuthRoute = pathname.startsWith("/login");
-  const isApiRoute = pathname.startsWith("/api");
-  const isPublic = isAuthRoute || isApiRoute;
-
-  if (!user && !isPublic) {
+    // Se qualquer coisa no proxy falhar, redireciona para login
     return NextResponse.redirect(new URL("/login", request.url));
   }
-
-  if (user && isAuthRoute) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
-  }
-
-  return supabaseResponse;
 }
 
 export const config = {
