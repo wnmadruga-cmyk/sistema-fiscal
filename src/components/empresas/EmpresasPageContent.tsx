@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Building2, Edit, CalendarDays, Download, Upload, FileSpreadsheet } from "lucide-react";
+import { Plus, Search, Building2, Edit, CalendarDays, Download, Upload, FileSpreadsheet, ChevronLeft, ChevronRight } from "lucide-react";
 import { formatDocument } from "@/lib/utils";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { UserAvatar } from "@/components/shared/UserAvatar";
@@ -15,7 +15,6 @@ import type {
   RegimeTributario,
   TipoAtividade,
   Prioridade,
-  Usuario,
   Grupo,
   Etiqueta,
 } from "@prisma/client";
@@ -35,29 +34,71 @@ interface EmpresasPageContentProps {
   empresas: EmpresaComRelacoes[];
   grupos: Grupo[];
   regimes: RegimeTributario[];
+  pagination: { page: number; perPageRaw: string; total: number; totalPages: number };
+  searchInicial: string;
+  grupoFiltroInicial: string;
 }
 
 export function EmpresasPageContent({
   empresas,
   grupos,
-  regimes,
+  pagination,
+  searchInicial,
+  grupoFiltroInicial,
 }: EmpresasPageContentProps) {
-  const [search, setSearch] = useState("");
-  const [grupoFiltro, setGrupoFiltro] = useState("");
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const [searchInput, setSearchInput] = useState(searchInicial);
 
-  const filtradas = empresas.filter((e) => {
-    const matchSearch =
-      !search ||
-      e.razaoSocial.toLowerCase().includes(search.toLowerCase()) ||
-      (e.codigoInterno?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
-      (e.cnpj?.includes(search) ?? false);
+  // Debounced search — only push to URL after 350ms idle, and only if value changed
+  useEffect(() => {
+    const current = searchParams.get("search") ?? "";
+    if (searchInput === current) return;
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (searchInput) {
+        params.set("search", searchInput);
+      } else {
+        params.delete("search");
+      }
+      params.set("page", "1");
+      router.replace(`/empresas?${params.toString()}`);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchInput, router, searchParams]);
 
-    const matchGrupo =
-      !grupoFiltro || e.grupos.some((g) => g.grupo.id === grupoFiltro);
+  const handleGrupoChange = useCallback(
+    (grupoId: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (grupoId) {
+        params.set("grupoId", grupoId);
+      } else {
+        params.delete("grupoId");
+      }
+      params.set("page", "1");
+      router.replace(`/empresas?${params.toString()}`);
+    },
+    [router, searchParams]
+  );
 
-    return matchSearch && matchGrupo;
-  });
+  const handlePageChange = useCallback(
+    (newPage: number) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("page", String(newPage));
+      router.replace(`/empresas?${params.toString()}`);
+    },
+    [router, searchParams]
+  );
+
+  const handlePerPageChange = useCallback(
+    (value: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("perPage", value);
+      params.set("page", "1");
+      router.replace(`/empresas?${params.toString()}`);
+    },
+    [router, searchParams]
+  );
 
   async function gerarCompetencias(empresaId: string) {
     const competenciaAtual = new Date();
@@ -79,6 +120,16 @@ export function EmpresasPageContent({
     }
   }
 
+  const { page, perPageRaw, total, totalPages } = pagination;
+  const perPageNum = perPageRaw === "all" ? total : parseInt(perPageRaw) || 25;
+  const startItem = total === 0 ? 0 : (page - 1) * perPageNum + 1;
+  const endItem = Math.min(page * perPageNum, total);
+
+  // Export URL uses current URL search params to reflect active filters
+  const exportSearch = searchParams.get("search") ?? "";
+  const exportGrupoId = searchParams.get("grupoId") ?? "";
+  const exportHref = `/api/empresas/export${exportSearch || exportGrupoId ? `?search=${encodeURIComponent(exportSearch)}&grupoId=${encodeURIComponent(exportGrupoId)}` : ""}`;
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -86,7 +137,7 @@ export function EmpresasPageContent({
         <div>
           <h1 className="text-2xl font-bold">Empresas</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {filtradas.length} empresa{filtradas.length !== 1 ? "s" : ""}
+            {total} empresa{total !== 1 ? "s" : ""} no total
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -96,9 +147,7 @@ export function EmpresasPageContent({
               Modelo Excel
             </Button>
           </a>
-          <a
-            href={`/api/empresas/export${search || grupoFiltro ? `?search=${encodeURIComponent(search)}&grupoId=${encodeURIComponent(grupoFiltro)}` : ""}`}
-          >
+          <a href={exportHref}>
             <Button variant="outline" size="sm" type="button">
               <FileSpreadsheet className="h-4 w-4" />
               Exportar Excel
@@ -125,14 +174,14 @@ export function EmpresasPageContent({
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Buscar empresa..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             className="pl-9"
           />
         </div>
         <select
-          value={grupoFiltro}
-          onChange={(e) => setGrupoFiltro(e.target.value)}
+          value={grupoFiltroInicial}
+          onChange={(e) => handleGrupoChange(e.target.value)}
           className="h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm"
         >
           <option value="">Todos os grupos</option>
@@ -145,7 +194,7 @@ export function EmpresasPageContent({
       </div>
 
       {/* Tabela */}
-      {filtradas.length === 0 ? (
+      {empresas.length === 0 ? (
         <EmptyState
           icon={Building2}
           title="Nenhuma empresa encontrada"
@@ -173,7 +222,7 @@ export function EmpresasPageContent({
               </tr>
             </thead>
             <tbody className="divide-y">
-              {filtradas.map((empresa) => (
+              {empresas.map((empresa) => (
                 <tr key={empresa.id} className="hover:bg-muted/30 transition-colors">
                   <td className="px-4 py-3">
                     <div>
@@ -255,6 +304,58 @@ export function EmpresasPageContent({
           </table>
         </div>
       )}
+
+      {/* Paginação */}
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <p className="text-sm text-muted-foreground">
+          {total === 0
+            ? "Nenhuma empresa"
+            : perPageRaw === "all"
+            ? `Exibindo todas as ${total} empresa${total !== 1 ? "s" : ""}`
+            : `Exibindo ${startItem}–${endItem} de ${total} empresa${total !== 1 ? "s" : ""}`}
+        </p>
+
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 text-sm">
+            <span className="text-muted-foreground">Por página:</span>
+            <select
+              value={perPageRaw}
+              onChange={(e) => handlePerPageChange(e.target.value)}
+              className="h-8 rounded-md border border-input bg-transparent px-2 py-0 text-sm"
+            >
+              <option value="25">25</option>
+              <option value="100">100</option>
+              <option value="all">Todas</option>
+            </select>
+          </div>
+
+          {perPageRaw !== "all" && totalPages > 1 && (
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => handlePageChange(page - 1)}
+                disabled={page <= 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-sm px-2">
+                {page} / {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => handlePageChange(page + 1)}
+                disabled={page >= totalPages}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
