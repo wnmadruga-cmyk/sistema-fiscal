@@ -122,7 +122,6 @@ export function ImportEmpresasView() {
     setRows((prev) => prev.filter((_, i) => i !== rowIdx));
   }
 
-  const totalErros = rows.reduce((acc, r) => acc + Object.keys(r.errors).length, 0);
   const linhasComErro = rows.filter((r) => Object.keys(r.errors).length && !r.duplicado).length;
   const linhasDuplicadas = rows.filter((r) => r.duplicado).length;
   const linhasOk = rows.length - linhasComErro - linhasDuplicadas;
