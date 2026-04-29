@@ -228,8 +228,6 @@ model Empresa {
   checklistsExcluidos  ChecklistExclusaoEmpresa[]
   errosVinculados  ErroPossivelEmpresa[]
 
-  @@unique([escritorioId, cnpj])
-  @@unique([escritorioId, cpf])
   @@unique([escritorioId, codigoInterno])
   @@map("empresas")
 }
