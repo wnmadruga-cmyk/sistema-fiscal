@@ -17,15 +17,20 @@ export default async function AppLayout({
 
   if (!user) redirect("/login");
 
-  const usuario = await prisma.usuario.findUnique({
-    where: { supabaseId: user.id },
-  });
-
-  const notificacoesNaoLidas = usuario
-    ? await prisma.notificacao.count({
+  let usuario = null;
+  let notificacoesNaoLidas = 0;
+  try {
+    usuario = await prisma.usuario.findUnique({
+      where: { supabaseId: user.id },
+    });
+    if (usuario) {
+      notificacoesNaoLidas = await prisma.notificacao.count({
         where: { usuarioId: usuario.id, lida: false },
-      })
-    : 0;
+      });
+    }
+  } catch (err) {
+    console.error("[AppLayout] Erro ao consultar banco:", err);
+  }
 
   return (
     <AppClientLayout>
