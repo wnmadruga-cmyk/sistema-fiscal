@@ -1,0 +1,850 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────
+// DOMÍNIO: ESCRITÓRIO
+// ─────────────────────────────────────────
+
+model Escritorio {
+  id        String   @id @default(cuid())
+  nome      String
+  cnpj      String?  @unique
+  email     String?
+  telefone  String?
+  endereco  String?
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  usuarioConferenciaPadraoId String?
+
+  usuarios       Usuario[]
+  empresas       Empresa[]
+  grupos         Grupo[]
+  etapasConfig   EtapaConfig[]
+  errosPossiveis ErroPossivel[]
+  formasChegada  FormaChegadaConfig[]
+  filiais        Filial[]
+
+  usuarioConferenciaPadrao Usuario? @relation("EscritorioConferenciaPadrao", fields: [usuarioConferenciaPadraoId], references: [id])
+
+  @@map("escritorios")
+}
+
+model RegimeTributario {
+  id        String   @id @default(cuid())
+  nome      String   @unique
+  codigo    String   @unique
+  descricao String?
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  empresas Empresa[]
+
+  @@map("regimes_tributarios")
+}
+
+model TipoAtividade {
+  id        String   @id @default(cuid())
+  nome      String   @unique
+  descricao String?
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  empresas Empresa[]
+
+  @@map("tipos_atividade")
+}
+
+model Prioridade {
+  id        String   @id @default(cuid())
+  nome      String
+  nivel     Int
+  cor       String
+  icone     String?
+  diasPrazo Int      @default(0)
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  empresas Empresa[]
+  cards    CompetenciaCard[]
+
+  @@map("prioridades")
+}
+
+model Grupo {
+  id                  String   @id @default(cuid())
+  escritorioId        String
+  nome                String
+  descricao           String?
+  cor                 String?
+  diasPrazo           Int?
+  sobrepoePrioridade  Boolean  @default(false)
+  exigirAbrirCard     Boolean  @default(false)
+  exigirConferencia   Boolean  @default(false)
+  ativo               Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  escritorio      Escritorio          @relation(fields: [escritorioId], references: [id])
+  empresas        EmpresaGrupo[]
+  checklists      ChecklistTemplate[]
+  checklistsVinculados ChecklistTemplateGrupo[]
+  errosVinculados ErroPossivelGrupo[]
+
+  @@map("grupos")
+}
+
+model Etiqueta {
+  id        String   @id @default(cuid())
+  nome      String
+  cor       String
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  empresaEtiquetas EmpresaEtiqueta[]
+  cardEtiquetas    CardEtiqueta[]
+
+  @@map("etiquetas")
+}
+
+// ─────────────────────────────────────────
+// DOMÍNIO: USUÁRIOS
+// ─────────────────────────────────────────
+
+enum PerfilUsuario {
+  ADMIN
+  GERENTE
+  OPERACIONAL
+  CONFERENTE
+}
+
+model Usuario {
+  id           String        @id @default(cuid())
+  supabaseId   String        @unique
+  escritorioId String
+  nome         String
+  email        String        @unique
+  perfil       PerfilUsuario @default(OPERACIONAL)
+  avatar       String?
+  ativo        Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  escritorio Escritorio @relation(fields: [escritorioId], references: [id])
+
+  empresasBusca       Empresa[] @relation("EmpresaRespBusca")
+  empresasElaboracao  Empresa[] @relation("EmpresaRespElaboracao")
+  empresasConferencia Empresa[] @relation("EmpresaRespConferencia")
+
+  cardsResponsavel   CompetenciaCard[]  @relation("CardResponsavel")
+  cardsConferencia   CompetenciaCard[]  @relation("CardConferenciaResp")
+  escritoriosConferenciaPadrao Escritorio[] @relation("EscritorioConferenciaPadrao")
+  comentarios        Comentario[]
+  mencoes            Mencao[]
+  erros              ControleQualidade[]
+  arquivos           Arquivo[]
+  observacoes        Observacao[]
+  checklistRespostas ChecklistResposta[]
+  notificacoes       Notificacao[]
+  eventos            CardEvento[]
+
+  @@map("usuarios")
+}
+
+// ─────────────────────────────────────────
+// DOMÍNIO: EMPRESAS
+// ─────────────────────────────────────────
+
+enum SituacaoFolha {
+  NAO_TEM
+  RH
+  FISCAL
+}
+
+model Empresa {
+  id                      String        @id @default(cuid())
+  escritorioId            String
+  regimeTributarioId      String?
+  tipoAtividadeId         String?
+  prioridadeId            String?
+  filialId                String?
+  respBuscaId             String?
+  respElaboracaoId        String?
+  respConferenciaId       String?
+
+  codigoInterno           String?
+  razaoSocial             String
+  nomeFantasia            String?
+  cnpj                    String?
+  cpf                     String?
+  inscricaoEstadual       String?
+  inscricaoMunicipal      String?
+  email                   String?
+  telefone                String?
+
+  diaVencimentoHonorarios Int?
+  situacaoFolha           SituacaoFolha @default(NAO_TEM)
+  fatorR                  Boolean       @default(false)
+  fechaAutomatico         Boolean       @default(false)
+
+  entregaImpressa         Boolean       @default(false)
+  clienteBusca            Boolean       @default(false)
+  escritorioEntrega       Boolean       @default(false)
+  entregaDigisac          Boolean       @default(false)
+  entregaSecretaria       Boolean       @default(false)
+
+  semMovimentoTemp        Boolean       @default(false)
+  exigirAbrirCard         Boolean       @default(false)
+  exigirConferencia       Boolean       @default(false)
+  observacaoGeral         String?
+  ativa                   Boolean       @default(true)
+
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
+
+  escritorio       Escritorio        @relation(fields: [escritorioId], references: [id])
+  regimeTributario RegimeTributario? @relation(fields: [regimeTributarioId], references: [id])
+  tipoAtividade    TipoAtividade?    @relation(fields: [tipoAtividadeId], references: [id])
+  prioridade       Prioridade?       @relation(fields: [prioridadeId], references: [id])
+  filial           Filial?           @relation(fields: [filialId], references: [id])
+  respBusca        Usuario?          @relation("EmpresaRespBusca", fields: [respBuscaId], references: [id])
+  respElaboracao   Usuario?          @relation("EmpresaRespElaboracao", fields: [respElaboracaoId], references: [id])
+  respConferencia  Usuario?          @relation("EmpresaRespConferencia", fields: [respConferenciaId], references: [id])
+
+  grupos           EmpresaGrupo[]
+  etiquetas        EmpresaEtiqueta[]
+  configDocumentos ConfigDocumento[]
+  configBuscas     ConfigBusca[]
+  competencias     CompetenciaCard[]
+  observacoes      Observacao[]
+  checklists       ChecklistTemplate[]
+  checklistsVinculados ChecklistTemplateEmpresa[]
+  checklistsExcluidos  ChecklistExclusaoEmpresa[]
+  errosVinculados  ErroPossivelEmpresa[]
+
+  @@unique([escritorioId, cnpj])
+  @@unique([escritorioId, cpf])
+  @@unique([escritorioId, codigoInterno])
+  @@map("empresas")
+}
+
+model Filial {
+  id           String   @id @default(cuid())
+  escritorioId String
+  nome         String
+  ativo        Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  escritorio Escritorio @relation(fields: [escritorioId], references: [id])
+  empresas   Empresa[]
+
+  @@unique([escritorioId, nome])
+  @@map("filiais")
+}
+
+model EmpresaGrupo {
+  empresaId String
+  grupoId   String
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  grupo   Grupo   @relation(fields: [grupoId], references: [id], onDelete: Cascade)
+
+  @@id([empresaId, grupoId])
+  @@map("empresa_grupos")
+}
+
+model EmpresaEtiqueta {
+  empresaId  String
+  etiquetaId String
+
+  empresa  Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  etiqueta Etiqueta @relation(fields: [etiquetaId], references: [id], onDelete: Cascade)
+
+  @@id([empresaId, etiquetaId])
+  @@map("empresa_etiquetas")
+}
+
+// ─────────────────────────────────────────
+// DOMÍNIO: DOCUMENTOS FISCAIS
+// ─────────────────────────────────────────
+
+enum TipoDocumento {
+  NFE
+  NFCE
+  NOTA_SERVICO
+  CTE
+  RECIBO_ALUGUEL
+}
+
+enum OrigemDocumento {
+  ESCRITORIO
+  TERCEIROS
+}
+
+enum FormaChegada {
+  EMAIL
+  ACESSO
+  ALT
+  OUTRO
+}
+
+enum TipoPortalServico {
+  NACIONAL
+  MUNICIPAL
+}
+
+model ConfigDocumento {
+  id              String             @id @default(cuid())
+  empresaId       String
+  tipoDocumento   TipoDocumento
+  ativo           Boolean            @default(true)
+  origem          OrigemDocumento    @default(ESCRITORIO)
+  nomeSistema     String?
+  formaChegada    FormaChegada?
+  formaChegadaId  String?
+  urlAcesso       String?
+  loginAcesso     String?
+  senhaAcesso     String?
+  tipoPortal      TipoPortalServico?
+  urlPortal       String?
+  loginPortal     String?
+  senhaPortal     String?
+  observacao      String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  empresa            Empresa             @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  formaChegadaConfig FormaChegadaConfig? @relation(fields: [formaChegadaId], references: [id])
+
+  @@unique([empresaId, tipoDocumento])
+  @@map("config_documentos")
+}
+
+model FormaChegadaConfig {
+  id           String   @id @default(cuid())
+  escritorioId String
+  nome         String
+  ativo        Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  escritorio       Escritorio        @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+  configDocumentos ConfigDocumento[]
+
+  @@unique([escritorioId, nome])
+  @@map("formas_chegada_config")
+}
+
+model ConfigBusca {
+  id         String   @id @default(cuid())
+  empresaId  String
+  nome       String
+  url        String
+  login      String
+  senhaHash  String
+  observacao String?
+  ativo      Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@map("config_buscas")
+}
+
+// ─────────────────────────────────────────
+// DOMÍNIO: COMPETÊNCIAS E CARDS
+// ─────────────────────────────────────────
+
+enum StatusCard {
+  PENDENTE
+  EM_ANDAMENTO
+  AGUARDANDO
+  CONCLUIDO
+  CANCELADO
+}
+
+enum EtapaCard {
+  BUSCA_DOCUMENTOS
+  CONFERENCIA_APURACAO
+  CONFERENCIA
+  TRANSMISSAO
+  ENVIO
+  ENVIO_ACESSORIAS
+  IMPRESSAO_PROTOCOLO
+  CONCLUIDO
+}
+
+enum StatusItemQualidade {
+  APROVADO
+  COM_ERRO
+  RESSALVA
+}
+
+enum ResultadoConferencia {
+  APROVADO
+  REPROVADO
+  RESSALVA
+}
+
+model CompetenciaCard {
+  id            String     @id @default(cuid())
+  empresaId     String
+  prioridadeId  String?
+  responsavelId String?
+
+  competencia             String
+  mes                     Int
+  ano                     Int
+  status                  StatusCard @default(PENDENTE)
+  etapaAtual              EtapaCard  @default(BUSCA_DOCUMENTOS)
+  urgente                 Boolean    @default(false)
+  semMovimento            Boolean    @default(false)
+  semMovimentoMesAnterior Boolean    @default(false)
+
+  prazo       DateTime?
+  iniciadoEm  DateTime?
+  concluidoEm DateTime?
+  observacoes String?
+
+  conferenciaForcada       Boolean  @default(false)
+  motivoConferencia        String?
+  conferenciaResponsavelId String?
+  notaQualidade            Decimal? @db.Decimal(5, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  empresa                Empresa     @relation(fields: [empresaId], references: [id])
+  prioridade             Prioridade? @relation(fields: [prioridadeId], references: [id])
+  responsavel            Usuario?    @relation("CardResponsavel", fields: [responsavelId], references: [id])
+  conferenciaResponsavel Usuario?    @relation("CardConferenciaResp", fields: [conferenciaResponsavelId], references: [id])
+
+  etapas          CardEtapa[]
+  etiquetas       CardEtiqueta[]
+  comentarios     Comentario[]
+  arquivos        Arquivo[]
+  qualidade       ControleQualidade[]
+  observacoesCard Observacao[]
+  eventos         CardEvento[]
+
+  @@unique([empresaId, competencia])
+  @@index([empresaId, ano, mes])
+  @@index([status, etapaAtual])
+  @@map("competencia_cards")
+}
+
+model CardEtiqueta {
+  cardId     String
+  etiquetaId String
+
+  card     CompetenciaCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  etiqueta Etiqueta        @relation(fields: [etiquetaId], references: [id], onDelete: Cascade)
+
+  @@id([cardId, etiquetaId])
+  @@map("card_etiquetas")
+}
+
+// ─────────────────────────────────────────
+// DOMÍNIO: ETAPAS
+// ─────────────────────────────────────────
+
+enum StatusEtapa {
+  PENDENTE
+  EM_ANDAMENTO
+  CONCLUIDA
+  REPROVADA
+  BLOQUEADA
+}
+
+model CardEtapa {
+  id                  String                @id @default(cuid())
+  cardId              String
+  etapa               EtapaCard
+  status              StatusEtapa           @default(PENDENTE)
+  responsavelId       String?
+  iniciadoEm          DateTime?
+  concluidoEm         DateTime?
+  observacao          String?
+  justificativa       String?
+  resultadoConferencia ResultadoConferencia?
+  comentarioRessalva  String?
+  ressalvaResolvida   Boolean               @default(false)
+
+  card      CompetenciaCard     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  respostas ChecklistResposta[]
+
+  @@unique([cardId, etapa])
+  @@map("card_etapas")
+}
+
+// Configuração de etapas por escritório (nome custom, ordem, manual)
+model EtapaConfig {
+  id               String    @id @default(cuid())
+  escritorioId     String
+  etapa            EtapaCard
+  nome             String
+  ordem            Int       @default(0)
+  ativa            Boolean   @default(true)
+  manualPdfUrl     String?
+  manualVideoUrl   String?
+  manualObservacao String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  escritorio Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+
+  @@unique([escritorioId, etapa])
+  @@map("etapas_config")
+}
+
+// ─────────────────────────────────────────
+// DOMÍNIO: CHECKLISTS
+// ─────────────────────────────────────────
+
+enum EscopoChecklist {
+  GLOBAL
+  GRUPO
+  EMPRESA
+}
+
+model ChecklistTemplate {
+  id          String          @id @default(cuid())
+  grupoId     String?
+  empresaId   String?
+  etapa       EtapaCard
+  escopo      EscopoChecklist @default(GLOBAL)
+  nome        String
+  descricao   String?
+  ordem       Int             @default(0)
+  obrigatorio Boolean         @default(false)
+  ativo       Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  grupo   Grupo?          @relation(fields: [grupoId], references: [id])
+  empresa Empresa?        @relation(fields: [empresaId], references: [id])
+  itens   ChecklistItem[]
+  empresas         ChecklistTemplateEmpresa[]
+  grupos           ChecklistTemplateGrupo[]
+  exclusoesEmpresa ChecklistExclusaoEmpresa[]
+
+  @@map("checklist_templates")
+}
+
+model ChecklistExclusaoEmpresa {
+  templateId String
+  empresaId  String
+
+  template ChecklistTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  empresa  Empresa           @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@id([templateId, empresaId])
+  @@index([empresaId])
+  @@map("checklist_exclusoes_empresa")
+}
+
+model ChecklistTemplateEmpresa {
+  templateId String
+  empresaId  String
+
+  template ChecklistTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  empresa  Empresa           @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@id([templateId, empresaId])
+  @@index([empresaId])
+  @@map("checklist_template_empresas")
+}
+
+model ChecklistTemplateGrupo {
+  templateId String
+  grupoId    String
+
+  template ChecklistTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  grupo    Grupo             @relation(fields: [grupoId], references: [id], onDelete: Cascade)
+
+  @@id([templateId, grupoId])
+  @@index([grupoId])
+  @@map("checklist_template_grupos")
+}
+
+model ChecklistItem {
+  id          String   @id @default(cuid())
+  templateId  String
+  texto       String
+  descricao   String?
+  ordem       Int      @default(0)
+  obrigatorio Boolean  @default(false)
+  ativo       Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  template  ChecklistTemplate  @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  respostas ChecklistResposta[]
+
+  @@map("checklist_itens")
+}
+
+model ChecklistResposta {
+  id           String   @id @default(cuid())
+  etapaId      String
+  itemId       String
+  usuarioId    String
+  marcado      Boolean  @default(false)
+  observacao   String?
+  respondidoEm DateTime @default(now())
+
+  etapa   CardEtapa     @relation(fields: [etapaId], references: [id], onDelete: Cascade)
+  item    ChecklistItem @relation(fields: [itemId], references: [id])
+  usuario Usuario       @relation(fields: [usuarioId], references: [id])
+
+  @@unique([etapaId, itemId])
+  @@map("checklist_respostas")
+}
+
+// ─────────────────────────────────────────
+// DOMÍNIO: CONTROLE DE QUALIDADE
+// ─────────────────────────────────────────
+
+enum TipoErro {
+  DADO_INCORRETO
+  DADO_FALTANDO
+  PRAZO_PERDIDO
+  RETRABALHO
+  COMUNICACAO
+  SISTEMA
+  OUTRO
+}
+
+model ControleQualidade {
+  id             String    @id @default(cuid())
+  cardId         String
+  etapa          EtapaCard
+  responsavelId  String
+  erroPossivelId String?
+  tipoErro       TipoErro
+  statusItem     StatusItemQualidade @default(COM_ERRO)
+  pesoSnapshot   Int       @default(1)
+  descricao      String?
+  observacao     String?
+  impacto        String?
+  correcao       String?
+  resolvido      Boolean   @default(false)
+  resolvidoEm    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  card         CompetenciaCard @relation(fields: [cardId], references: [id])
+  responsavel  Usuario         @relation(fields: [responsavelId], references: [id])
+  erroPossivel ErroPossivel?   @relation(fields: [erroPossivelId], references: [id])
+
+  @@map("controle_qualidade")
+}
+
+// Catálogo de erros configuráveis vinculáveis a grupos ou empresas
+model ErroPossivel {
+  id           String   @id @default(cuid())
+  escritorioId String
+  nome         String
+  descricao    String?
+  tipoErro     TipoErro @default(OUTRO)
+  categorias   String[] @default([])
+  peso         Int      @default(1)
+  pesosCategoria Json   @default("{}")
+  ativo        Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  escritorio Escritorio            @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+  empresas   ErroPossivelEmpresa[]
+  grupos     ErroPossivelGrupo[]
+  ocorrencias ControleQualidade[]
+
+  @@map("erros_possiveis")
+}
+
+model ErroPossivelEmpresa {
+  erroId    String
+  empresaId String
+
+  erro    ErroPossivel @relation(fields: [erroId], references: [id], onDelete: Cascade)
+  empresa Empresa      @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@id([erroId, empresaId])
+  @@map("erros_possiveis_empresas")
+}
+
+model ErroPossivelGrupo {
+  erroId  String
+  grupoId String
+
+  erro  ErroPossivel @relation(fields: [erroId], references: [id], onDelete: Cascade)
+  grupo Grupo        @relation(fields: [grupoId], references: [id], onDelete: Cascade)
+
+  @@id([erroId, grupoId])
+  @@map("erros_possiveis_grupos")
+}
+
+// ─────────────────────────────────────────
+// DOMÍNIO: COMENTÁRIOS E COLABORAÇÃO
+// ─────────────────────────────────────────
+
+model Comentario {
+  id        String   @id @default(cuid())
+  cardId    String
+  autorId   String
+  parentId  String?
+  texto     String
+  editado   Boolean  @default(false)
+  deletado  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  card      CompetenciaCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  autor     Usuario         @relation(fields: [autorId], references: [id])
+  parent    Comentario?     @relation("ComentarioThread", fields: [parentId], references: [id])
+  respostas Comentario[]    @relation("ComentarioThread")
+  mencoes   Mencao[]
+  arquivos  Arquivo[]
+
+  @@map("comentarios")
+}
+
+model Mencao {
+  id           String    @id @default(cuid())
+  comentarioId String
+  usuarioId    String
+  lida         Boolean   @default(false)
+  lidaEm       DateTime?
+  createdAt    DateTime  @default(now())
+
+  comentario Comentario @relation(fields: [comentarioId], references: [id], onDelete: Cascade)
+  usuario    Usuario    @relation(fields: [usuarioId], references: [id])
+
+  @@map("mencoes")
+}
+
+// ─────────────────────────────────────────
+// DOMÍNIO: ARQUIVOS
+// ─────────────────────────────────────────
+
+model Arquivo {
+  id           String   @id @default(cuid())
+  cardId       String?
+  comentarioId String?
+  autorId      String
+  nome         String
+  nomeOriginal String
+  tipo         String
+  tamanho      Int
+  bucket       String
+  path         String
+  url          String?
+  createdAt    DateTime @default(now())
+
+  card       CompetenciaCard? @relation(fields: [cardId], references: [id])
+  comentario Comentario?      @relation(fields: [comentarioId], references: [id])
+  autor      Usuario          @relation(fields: [autorId], references: [id])
+
+  @@map("arquivos")
+}
+
+// ─────────────────────────────────────────
+// DOMÍNIO: OBSERVAÇÕES PERSISTENTES
+// ─────────────────────────────────────────
+
+model Observacao {
+  id          String   @id @default(cuid())
+  empresaId   String
+  cardId      String?
+  autorId     String
+  texto       String
+  persistente Boolean  @default(true)
+  ativa       Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  empresa Empresa          @relation(fields: [empresaId], references: [id])
+  card    CompetenciaCard? @relation(fields: [cardId], references: [id])
+  autor   Usuario          @relation(fields: [autorId], references: [id])
+
+  @@map("observacoes")
+}
+
+// ─────────────────────────────────────────
+// DOMÍNIO: NOTIFICAÇÕES
+// ─────────────────────────────────────────
+
+enum TipoNotificacao {
+  MENCAO
+  PRAZO_PROXIMO
+  ETAPA_CONCLUIDA
+  ERRO_REGISTRADO
+  CARD_ATRIBUIDO
+  COMENTARIO_NOVO
+}
+
+model Notificacao {
+  id        String          @id @default(cuid())
+  usuarioId String
+  tipo      TipoNotificacao
+  titulo    String
+  mensagem  String
+  linkRef   String?
+  lida      Boolean         @default(false)
+  lidaEm    DateTime?
+  createdAt DateTime        @default(now())
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId, lida])
+  @@map("notificacoes")
+}
+
+// ─────────────────────────────────────────
+// DOMÍNIO: HISTÓRICO DE EVENTOS DO CARD
+// ─────────────────────────────────────────
+
+enum TipoEventoCard {
+  CRIADO
+  ETAPA_INICIADA
+  ETAPA_CONCLUIDA
+  ETAPA_REPROVADA
+  CONFERENCIA_APROVADA
+  CONFERENCIA_RESSALVA
+  CONFERENCIA_REPROVADA
+  RESSALVA_RESOLVIDA
+  COMENTARIO
+  OBSERVACAO
+  ETIQUETA_ALTERADA
+  URGENTE_MARCADO
+  URGENTE_REMOVIDO
+  SEM_MOVIMENTO_MARCADO
+  SEM_MOVIMENTO_REMOVIDO
+  RESPONSAVEL_ALTERADO
+  QUALIDADE_REGISTRADA
+  CHECKLIST_MARCADO
+  OUTRO
+}
+
+model CardEvento {
+  id        String         @id @default(cuid())
+  cardId    String
+  usuarioId String?
+  tipo      TipoEventoCard
+  titulo    String
+  detalhes  String?
+  createdAt DateTime       @default(now())
+
+  card    CompetenciaCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  usuario Usuario?        @relation(fields: [usuarioId], references: [id])
+
+  @@index([cardId, createdAt])
+  @@map("card_eventos")
+}

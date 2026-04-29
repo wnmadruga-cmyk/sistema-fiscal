@@ -1,0 +1,51 @@
+export const dynamic = "force-dynamic";
+
+import { createClient } from "@/lib/supabase/server";
+import { prisma } from "@/lib/prisma";
+import { redirect } from "next/navigation";
+import { UsuariosManager } from "@/components/configuracoes/UsuariosManager";
+
+export default async function UsuariosPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const usuario = await prisma.usuario.findUnique({ where: { supabaseId: user.id } });
+  if (!usuario) redirect("/login");
+
+  const [usuarios, empresas] = await Promise.all([
+    prisma.usuario.findMany({
+      where: { escritorioId: usuario.escritorioId },
+      select: { id: true, nome: true, email: true, perfil: true, avatar: true, ativo: true, createdAt: true },
+      orderBy: { nome: "asc" },
+    }),
+    prisma.empresa.findMany({
+      where: { escritorioId: usuario.escritorioId, ativa: true },
+      select: { id: true, razaoSocial: true, nomeFantasia: true, respBuscaId: true, respElaboracaoId: true, respConferenciaId: true },
+      orderBy: { razaoSocial: "asc" },
+    }),
+  ]);
+
+  const empresasLookup = empresas.map((e) => ({
+    id: e.id,
+    nome: e.nomeFantasia ?? e.razaoSocial,
+    respBuscaId: e.respBuscaId,
+    respElaboracaoId: e.respElaboracaoId,
+    respConferenciaId: e.respConferenciaId,
+  }));
+
+  return (
+    <div className="p-6 max-w-4xl mx-auto">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold">Usuários</h1>
+        <p className="text-sm text-muted-foreground mt-1">Colaboradores e responsabilidades por empresa</p>
+      </div>
+      <UsuariosManager
+        initial={usuarios}
+        empresas={empresasLookup}
+        canManage={usuario.perfil === "ADMIN" || usuario.perfil === "GERENTE"}
+        usuarioAtualId={usuario.id}
+      />
+    </div>
+  );
+}
