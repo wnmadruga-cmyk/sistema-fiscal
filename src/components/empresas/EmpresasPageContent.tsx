@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Building2, Edit, CalendarDays, Download, Upload } from "lucide-react";
+import { Plus, Search, Building2, Edit, CalendarDays, Download, Upload, FileSpreadsheet } from "lucide-react";
 import { formatDocument } from "@/lib/utils";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { UserAvatar } from "@/components/shared/UserAvatar";
@@ -94,6 +94,14 @@ export function EmpresasPageContent({
             <Button variant="outline" size="sm" type="button">
               <Download className="h-4 w-4" />
               Modelo Excel
+            </Button>
+          </a>
+          <a
+            href={`/api/empresas/export${search || grupoFiltro ? `?search=${encodeURIComponent(search)}&grupoId=${encodeURIComponent(grupoFiltro)}` : ""}`}
+          >
+            <Button variant="outline" size="sm" type="button">
+              <FileSpreadsheet className="h-4 w-4" />
+              Exportar Excel
             </Button>
           </a>
           <Link href="/empresas/importar">
