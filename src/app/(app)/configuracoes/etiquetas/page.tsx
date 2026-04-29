@@ -1,22 +1,22 @@
 export const dynamic = "force-dynamic";
 
-import { createClient } from "@/lib/supabase/server";
-import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
+import { unstable_cache } from "next/cache";
+import { prisma } from "@/lib/prisma";
+import { getAuthUser } from "@/lib/auth";
 import { EtiquetasManager } from "@/components/configuracoes/EtiquetasManager";
 
+const getEtiquetas = unstable_cache(
+  async () => prisma.etiqueta.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
+  ["config-etiquetas"],
+  { revalidate: 300, tags: ["etiquetas"] }
+);
+
 export default async function EtiquetasPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const { supabaseUser, usuario } = await getAuthUser();
+  if (!supabaseUser || !usuario) redirect("/login");
 
-  const usuario = await prisma.usuario.findUnique({ where: { supabaseId: user.id } });
-  if (!usuario) redirect("/login");
-
-  const etiquetas = await prisma.etiqueta.findMany({
-    where: { ativo: true },
-    orderBy: { nome: "asc" },
-  });
+  const etiquetas = await getEtiquetas();
 
   return (
     <div className="p-6 max-w-4xl mx-auto">

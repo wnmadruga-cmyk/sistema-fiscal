@@ -1,38 +1,42 @@
 export const dynamic = "force-dynamic";
 
-import { createClient } from "@/lib/supabase/server";
-import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
+import { unstable_cache } from "next/cache";
+import { prisma } from "@/lib/prisma";
+import { getAuthUser } from "@/lib/auth";
 import { ErrosManager } from "@/components/configuracoes/ErrosManager";
 
+const getErrosData = unstable_cache(
+  async (escritorioId: string) =>
+    Promise.all([
+      prisma.erroPossivel.findMany({
+        where: { escritorioId, ativo: true },
+        include: {
+          empresas: { select: { empresaId: true } },
+          grupos: { select: { grupoId: true } },
+        },
+        orderBy: { nome: "asc" },
+      }),
+      prisma.empresa.findMany({
+        where: { escritorioId, ativa: true },
+        select: { id: true, razaoSocial: true, codigoInterno: true },
+        orderBy: { razaoSocial: "asc" },
+      }),
+      prisma.grupo.findMany({
+        where: { escritorioId, ativo: true },
+        select: { id: true, nome: true, cor: true },
+        orderBy: { nome: "asc" },
+      }),
+    ]),
+  ["config-erros"],
+  { revalidate: 300, tags: ["erros-possiveis"] }
+);
+
 export default async function ErrosPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const { supabaseUser, usuario } = await getAuthUser();
+  if (!supabaseUser || !usuario) redirect("/login");
 
-  const usuario = await prisma.usuario.findUnique({ where: { supabaseId: user.id } });
-  if (!usuario) redirect("/login");
-
-  const [erros, empresas, grupos] = await Promise.all([
-    prisma.erroPossivel.findMany({
-      where: { escritorioId: usuario.escritorioId, ativo: true },
-      include: {
-        empresas: { select: { empresaId: true } },
-        grupos: { select: { grupoId: true } },
-      },
-      orderBy: { nome: "asc" },
-    }),
-    prisma.empresa.findMany({
-      where: { escritorioId: usuario.escritorioId, ativa: true },
-      select: { id: true, razaoSocial: true, codigoInterno: true },
-      orderBy: { razaoSocial: "asc" },
-    }),
-    prisma.grupo.findMany({
-      where: { escritorioId: usuario.escritorioId, ativo: true },
-      select: { id: true, nome: true, cor: true },
-      orderBy: { nome: "asc" },
-    }),
-  ]);
+  const [erros, empresas, grupos] = await getErrosData(usuario.escritorioId);
 
   const errosForUI = erros.map((e) => ({
     id: e.id,

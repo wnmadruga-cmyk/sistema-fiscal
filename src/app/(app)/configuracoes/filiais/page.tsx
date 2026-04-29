@@ -1,22 +1,23 @@
 export const dynamic = "force-dynamic";
 
-import { createClient } from "@/lib/supabase/server";
-import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
+import { unstable_cache } from "next/cache";
+import { prisma } from "@/lib/prisma";
+import { getAuthUser } from "@/lib/auth";
 import { FiliaisManager } from "@/components/configuracoes/FiliaisManager";
 
+const getFiliais = unstable_cache(
+  async (escritorioId: string) =>
+    prisma.filial.findMany({ where: { escritorioId, ativo: true }, orderBy: { nome: "asc" } }),
+  ["config-filiais"],
+  { revalidate: 300, tags: ["filiais"] }
+);
+
 export default async function FiliaisPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const { supabaseUser, usuario } = await getAuthUser();
+  if (!supabaseUser || !usuario) redirect("/login");
 
-  const usuario = await prisma.usuario.findUnique({ where: { supabaseId: user.id } });
-  if (!usuario) redirect("/login");
-
-  const filiais = await prisma.filial.findMany({
-    where: { escritorioId: usuario.escritorioId, ativo: true },
-    orderBy: { nome: "asc" },
-  });
+  const filiais = await getFiliais(usuario.escritorioId);
 
   return (
     <div className="p-6 max-w-4xl mx-auto">

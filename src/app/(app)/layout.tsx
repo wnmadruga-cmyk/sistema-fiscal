@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
+import { getAuthUser } from "@/lib/auth";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
 import { AppClientLayout } from "@/components/layout/AppClientLayout";
@@ -10,19 +10,12 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabaseUser, usuario } = await getAuthUser();
 
-  if (!user) redirect("/login");
+  if (!supabaseUser) redirect("/login");
 
-  let usuario = null;
   let notificacoesNaoLidas = 0;
   try {
-    usuario = await prisma.usuario.findUnique({
-      where: { supabaseId: user.id },
-    });
     if (usuario) {
       notificacoesNaoLidas = await prisma.notificacao.count({
         where: { usuarioId: usuario.id, lida: false },
@@ -36,7 +29,7 @@ export default async function AppLayout({
     <AppClientLayout>
       <Sidebar />
       <Header
-        usuarioNome={usuario?.nome ?? user.email ?? "Usuário"}
+        usuarioNome={usuario?.nome ?? supabaseUser.email ?? "Usuário"}
         usuarioAvatar={usuario?.avatar}
         notificacoesNaoLidas={notificacoesNaoLidas}
       />

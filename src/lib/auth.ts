@@ -1,11 +1,13 @@
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import type { Usuario } from "@prisma/client";
 
-export async function getAuthUser(): Promise<{
+// React.cache deduplicates calls within a single request — layout + page share one auth lookup
+export const getAuthUser = cache(async (): Promise<{
   supabaseUser: { id: string; email?: string } | null;
   usuario: Usuario | null;
-}> {
+}> => {
   const supabase = await createClient();
   const {
     data: { user },
@@ -18,7 +20,7 @@ export async function getAuthUser(): Promise<{
   });
 
   return { supabaseUser: user, usuario };
-}
+});
 
 export async function requireAuth(): Promise<{
   supabaseUser: { id: string; email?: string };

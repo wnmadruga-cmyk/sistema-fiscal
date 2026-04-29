@@ -13,7 +13,9 @@ export async function GET() {
       take: 50,
     });
 
-    return ok(notificacoes);
+    return ok(notificacoes, 200, {
+      "Cache-Control": "private, max-age=30, stale-while-revalidate=30",
+    });
   } catch (error) {
     if ((error as Error).message === "UNAUTHORIZED") return unauthorized();
     return serverError(error);

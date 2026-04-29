@@ -1,22 +1,23 @@
 export const dynamic = "force-dynamic";
 
-import { createClient } from "@/lib/supabase/server";
-import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
+import { unstable_cache } from "next/cache";
+import { prisma } from "@/lib/prisma";
+import { getAuthUser } from "@/lib/auth";
 import { FormasChegadaManager } from "@/components/configuracoes/FormasChegadaManager";
 
+const getFormasChegada = unstable_cache(
+  async (escritorioId: string) =>
+    prisma.formaChegadaConfig.findMany({ where: { escritorioId, ativo: true }, orderBy: { nome: "asc" } }),
+  ["config-formas-chegada"],
+  { revalidate: 300, tags: ["formas-chegada"] }
+);
+
 export default async function FormasChegadaPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const { supabaseUser, usuario } = await getAuthUser();
+  if (!supabaseUser || !usuario) redirect("/login");
 
-  const usuario = await prisma.usuario.findUnique({ where: { supabaseId: user.id } });
-  if (!usuario) redirect("/login");
-
-  const formas = await prisma.formaChegadaConfig.findMany({
-    where: { escritorioId: usuario.escritorioId, ativo: true },
-    orderBy: { nome: "asc" },
-  });
+  const formas = await getFormasChegada(usuario.escritorioId);
 
   return (
     <div className="p-6 max-w-3xl mx-auto">

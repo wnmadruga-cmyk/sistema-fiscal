@@ -1,8 +1,8 @@
 export const dynamic = "force-dynamic";
 
-import { createClient } from "@/lib/supabase/server";
-import { prisma } from "@/lib/prisma";
 import { redirect, notFound } from "next/navigation";
+import { prisma } from "@/lib/prisma";
+import { getAuthUser } from "@/lib/auth";
 import { EmpresaForm } from "@/components/empresas/EmpresaForm";
 
 export default async function EditarEmpresaPage({
@@ -11,14 +11,8 @@ export default async function EditarEmpresaPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const usuario = await prisma.usuario.findUnique({
-    where: { supabaseId: user.id },
-  });
-  if (!usuario) redirect("/login");
+  const { supabaseUser, usuario } = await getAuthUser();
+  if (!supabaseUser || !usuario) redirect("/login");
 
   const [empresa, regimes, tipos, prioridades, grupos, etiquetas, usuarios, formasChegada, filiais, checklists, erros] = await Promise.all([
     prisma.empresa.findFirst({

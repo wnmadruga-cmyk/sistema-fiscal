@@ -1,8 +1,8 @@
 export const dynamic = "force-dynamic";
 
-import { createClient } from "@/lib/supabase/server";
-import { prisma } from "@/lib/prisma";
 import { redirect, notFound } from "next/navigation";
+import { prisma } from "@/lib/prisma";
+import { getAuthUser } from "@/lib/auth";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { competenciaLabel } from "@/lib/competencia-utils";
@@ -13,12 +13,8 @@ export default async function QualidadeEmpresaPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const usuario = await prisma.usuario.findUnique({ where: { supabaseId: user.id } });
-  if (!usuario) redirect("/login");
+  const { supabaseUser, usuario } = await getAuthUser();
+  if (!supabaseUser || !usuario) redirect("/login");
 
   const empresa = await prisma.empresa.findFirst({
     where: { id, escritorioId: usuario.escritorioId },

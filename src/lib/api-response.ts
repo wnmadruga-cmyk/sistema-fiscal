@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
-export function ok<T>(data: T, status = 200) {
-  return NextResponse.json({ data, success: true }, { status });
+export function ok<T>(data: T, status = 200, headers?: Record<string, string>) {
+  return NextResponse.json({ data, success: true }, { status, headers });
 }
 
 export function created<T>(data: T) {

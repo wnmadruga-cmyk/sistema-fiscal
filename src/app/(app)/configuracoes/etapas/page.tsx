@@ -1,8 +1,9 @@
 export const dynamic = "force-dynamic";
 
-import { createClient } from "@/lib/supabase/server";
-import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
+import { unstable_cache } from "next/cache";
+import { prisma } from "@/lib/prisma";
+import { getAuthUser } from "@/lib/auth";
 import { EtapasManager } from "@/components/configuracoes/EtapasManager";
 
 const ETAPAS_PADRAO = [
@@ -15,18 +16,18 @@ const ETAPAS_PADRAO = [
   { etapa: "CONCLUIDO", nome: "Concluído", ordem: 7 },
 ] as const;
 
+const getEtapasConfig = unstable_cache(
+  async (escritorioId: string) =>
+    prisma.etapaConfig.findMany({ where: { escritorioId }, orderBy: { ordem: "asc" } }),
+  ["config-etapas"],
+  { revalidate: 300, tags: ["etapas"] }
+);
+
 export default async function EtapasPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const { supabaseUser, usuario } = await getAuthUser();
+  if (!supabaseUser || !usuario) redirect("/login");
 
-  const usuario = await prisma.usuario.findUnique({ where: { supabaseId: user.id } });
-  if (!usuario) redirect("/login");
-
-  const existentes = await prisma.etapaConfig.findMany({
-    where: { escritorioId: usuario.escritorioId },
-    orderBy: { ordem: "asc" },
-  });
+  const existentes = await getEtapasConfig(usuario.escritorioId);
 
   // Mescla padrões com configurações existentes para garantir todas as 7 etapas
   const merged = ETAPAS_PADRAO.map((p) => {

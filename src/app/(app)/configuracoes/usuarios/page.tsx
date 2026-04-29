@@ -1,30 +1,34 @@
 export const dynamic = "force-dynamic";
 
-import { createClient } from "@/lib/supabase/server";
-import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
+import { unstable_cache } from "next/cache";
+import { prisma } from "@/lib/prisma";
+import { getAuthUser } from "@/lib/auth";
 import { UsuariosManager } from "@/components/configuracoes/UsuariosManager";
 
+const getUsuariosData = unstable_cache(
+  async (escritorioId: string) =>
+    Promise.all([
+      prisma.usuario.findMany({
+        where: { escritorioId },
+        select: { id: true, nome: true, email: true, perfil: true, avatar: true, ativo: true, createdAt: true },
+        orderBy: { nome: "asc" },
+      }),
+      prisma.empresa.findMany({
+        where: { escritorioId, ativa: true },
+        select: { id: true, razaoSocial: true, nomeFantasia: true, respBuscaId: true, respElaboracaoId: true, respConferenciaId: true },
+        orderBy: { razaoSocial: "asc" },
+      }),
+    ]),
+  ["config-usuarios"],
+  { revalidate: 60, tags: ["usuarios"] }
+);
+
 export default async function UsuariosPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const { supabaseUser, usuario } = await getAuthUser();
+  if (!supabaseUser || !usuario) redirect("/login");
 
-  const usuario = await prisma.usuario.findUnique({ where: { supabaseId: user.id } });
-  if (!usuario) redirect("/login");
-
-  const [usuarios, empresas] = await Promise.all([
-    prisma.usuario.findMany({
-      where: { escritorioId: usuario.escritorioId },
-      select: { id: true, nome: true, email: true, perfil: true, avatar: true, ativo: true, createdAt: true },
-      orderBy: { nome: "asc" },
-    }),
-    prisma.empresa.findMany({
-      where: { escritorioId: usuario.escritorioId, ativa: true },
-      select: { id: true, razaoSocial: true, nomeFantasia: true, respBuscaId: true, respElaboracaoId: true, respConferenciaId: true },
-      orderBy: { razaoSocial: "asc" },
-    }),
-  ]);
+  const [usuarios, empresas] = await getUsuariosData(usuario.escritorioId);
 
   const empresasLookup = empresas.map((e) => ({
     id: e.id,

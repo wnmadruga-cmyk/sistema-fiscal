@@ -42,7 +42,9 @@ export async function GET(
       select: { id: true, erroPossivelId: true, statusItem: true, observacao: true, pesoSnapshot: true },
     });
 
-    return ok({ erros, marcados });
+    return ok({ erros, marcados }, 200, {
+      "Cache-Control": "private, max-age=30, stale-while-revalidate=60",
+    });
   } catch (error) {
     if ((error as Error).message === "UNAUTHORIZED") return unauthorized();
     return serverError(error);

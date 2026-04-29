@@ -1,46 +1,48 @@
-import { createClient } from "@/lib/supabase/server";
-import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
+import { unstable_cache } from "next/cache";
+import { prisma } from "@/lib/prisma";
+import { getAuthUser } from "@/lib/auth";
 import { QualidadeDashboard } from "@/components/qualidade/QualidadeDashboard";
 
-export default async function QualidadePage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const usuario = await prisma.usuario.findUnique({
-    where: { supabaseId: user.id },
-  });
-  if (!usuario) redirect("/login");
-
-  const [erros, totalPorTipo, totalPorEtapa] = await Promise.all([
-    prisma.controleQualidade.findMany({
-      where: {
-        card: { empresa: { escritorioId: usuario.escritorioId } },
-        resolvido: false,
-      },
-      include: {
-        card: {
-          include: {
-            empresa: { select: { razaoSocial: true, nomeFantasia: true } },
-          },
+const getQualidadeData = unstable_cache(
+  async (escritorioId: string) =>
+    Promise.all([
+      prisma.controleQualidade.findMany({
+        where: {
+          card: { empresa: { escritorioId } },
+          resolvido: false,
         },
-        responsavel: { select: { id: true, nome: true, avatar: true } },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 50,
-    }),
-    prisma.controleQualidade.groupBy({
-      by: ["tipoErro"],
-      where: { card: { empresa: { escritorioId: usuario.escritorioId } } },
-      _count: { tipoErro: true },
-    }),
-    prisma.controleQualidade.groupBy({
-      by: ["etapa"],
-      where: { card: { empresa: { escritorioId: usuario.escritorioId } } },
-      _count: { etapa: true },
-    }),
-  ]);
+        include: {
+          card: {
+            include: {
+              empresa: { select: { razaoSocial: true, nomeFantasia: true } },
+            },
+          },
+          responsavel: { select: { id: true, nome: true, avatar: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      }),
+      prisma.controleQualidade.groupBy({
+        by: ["tipoErro"],
+        where: { card: { empresa: { escritorioId } } },
+        _count: { tipoErro: true },
+      }),
+      prisma.controleQualidade.groupBy({
+        by: ["etapa"],
+        where: { card: { empresa: { escritorioId } } },
+        _count: { etapa: true },
+      }),
+    ]),
+  ["qualidade-page"],
+  { revalidate: 60, tags: ["qualidade"] }
+);
+
+export default async function QualidadePage() {
+  const { supabaseUser, usuario } = await getAuthUser();
+  if (!supabaseUser || !usuario) redirect("/login");
+
+  const [erros, totalPorTipo, totalPorEtapa] = await getQualidadeData(usuario.escritorioId);
 
   return (
     <QualidadeDashboard

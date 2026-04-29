@@ -1,46 +1,50 @@
 export const dynamic = "force-dynamic";
 
-import { createClient } from "@/lib/supabase/server";
-import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
+import { unstable_cache } from "next/cache";
+import { prisma } from "@/lib/prisma";
+import { getAuthUser } from "@/lib/auth";
 import { ChecklistsManager } from "@/components/configuracoes/ChecklistsManager";
 
+const getChecklistsData = unstable_cache(
+  async (escritorioId: string) =>
+    Promise.all([
+      prisma.checklistTemplate.findMany({
+        where: {
+          ativo: true,
+          OR: [
+            { escopo: "GLOBAL" },
+            { empresas: { some: { empresa: { escritorioId } } } },
+            { grupos: { some: { grupo: { escritorioId } } } },
+          ],
+        },
+        include: {
+          itens: { where: { ativo: true }, orderBy: { ordem: "asc" } },
+          empresas: { select: { empresaId: true } },
+          grupos: { select: { grupoId: true } },
+        },
+        orderBy: [{ etapa: "asc" }, { ordem: "asc" }],
+      }),
+      prisma.grupo.findMany({
+        where: { escritorioId, ativo: true },
+        select: { id: true, nome: true, cor: true },
+        orderBy: { nome: "asc" },
+      }),
+      prisma.empresa.findMany({
+        where: { escritorioId, ativa: true },
+        select: { id: true, razaoSocial: true, codigoInterno: true },
+        orderBy: { razaoSocial: "asc" },
+      }),
+    ]),
+  ["config-checklists"],
+  { revalidate: 300, tags: ["checklists"] }
+);
+
 export default async function ChecklistsPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const { supabaseUser, usuario } = await getAuthUser();
+  if (!supabaseUser || !usuario) redirect("/login");
 
-  const usuario = await prisma.usuario.findUnique({ where: { supabaseId: user.id } });
-  if (!usuario) redirect("/login");
-
-  const [templates, grupos, empresas] = await Promise.all([
-    prisma.checklistTemplate.findMany({
-      where: {
-        ativo: true,
-        OR: [
-          { escopo: "GLOBAL" },
-          { empresas: { some: { empresa: { escritorioId: usuario.escritorioId } } } },
-          { grupos: { some: { grupo: { escritorioId: usuario.escritorioId } } } },
-        ],
-      },
-      include: {
-        itens: { where: { ativo: true }, orderBy: { ordem: "asc" } },
-        empresas: { select: { empresaId: true } },
-        grupos: { select: { grupoId: true } },
-      },
-      orderBy: [{ etapa: "asc" }, { ordem: "asc" }],
-    }),
-    prisma.grupo.findMany({
-      where: { escritorioId: usuario.escritorioId, ativo: true },
-      select: { id: true, nome: true, cor: true },
-      orderBy: { nome: "asc" },
-    }),
-    prisma.empresa.findMany({
-      where: { escritorioId: usuario.escritorioId, ativa: true },
-      select: { id: true, razaoSocial: true, codigoInterno: true },
-      orderBy: { razaoSocial: "asc" },
-    }),
-  ]);
+  const [templates, grupos, empresas] = await getChecklistsData(usuario.escritorioId);
 
   const templatesNorm = templates.map((t) => ({
     id: t.id,
