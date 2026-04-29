@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -30,12 +30,16 @@ export function KanbanView({ cards }: KanbanViewProps) {
   const router = useRouter();
   const [dragging, setDragging] = useState<string | null>(null);
 
-  const cardsPorEtapa = ORDEM_ETAPAS.reduce(
-    (acc, etapa) => {
-      acc[etapa] = cards.filter((c) => c.etapaAtual === etapa);
-      return acc;
-    },
-    {} as Record<EtapaCard, CardItem[]>
+  const cardsPorEtapa = useMemo(
+    () =>
+      ORDEM_ETAPAS.reduce(
+        (acc, etapa) => {
+          acc[etapa] = cards.filter((c) => c.etapaAtual === etapa);
+          return acc;
+        },
+        {} as Record<EtapaCard, CardItem[]>
+      ),
+    [cards]
   );
 
   async function handleDrop(cardId: string, novaEtapa: EtapaCard) {

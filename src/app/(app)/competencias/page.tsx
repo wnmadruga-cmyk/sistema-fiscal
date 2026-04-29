@@ -1,8 +1,47 @@
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
+import { unstable_cache } from "next/cache";
 import { CompetenciasPageContent } from "@/components/competencias/CompetenciasPageContent";
 import { competenciaAtual } from "@/lib/competencia-utils";
+
+// Dados de referência raramente mudam — cache por 5 minutos
+const getDadosEstaticos = unstable_cache(
+  async (escritorioId: string) => {
+    const [grupos, usuarios, prioridades, empresas, etiquetas, regimes, tiposAtividade, filiais] =
+      await Promise.all([
+        prisma.grupo.findMany({
+          where: { escritorioId, ativo: true },
+          orderBy: { nome: "asc" },
+        }),
+        prisma.usuario.findMany({
+          where: { escritorioId, ativo: true },
+          select: { id: true, nome: true, avatar: true },
+        }),
+        prisma.prioridade.findMany({
+          where: { ativo: true },
+          orderBy: { nivel: "asc" },
+          select: { id: true, nome: true, cor: true, diasPrazo: true },
+        }),
+        prisma.empresa.findMany({
+          where: { escritorioId, ativa: true },
+          select: { id: true, razaoSocial: true, codigoInterno: true, prioridadeId: true },
+          orderBy: { razaoSocial: "asc" },
+        }),
+        prisma.etiqueta.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
+        prisma.regimeTributario.findMany({ orderBy: { nome: "asc" } }),
+        prisma.tipoAtividade.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
+        prisma.filial.findMany({
+          where: { escritorioId, ativo: true },
+          select: { id: true, nome: true },
+          orderBy: { nome: "asc" },
+        }),
+      ]);
+    return { grupos, usuarios, prioridades, empresas, etiquetas, regimes, tiposAtividade, filiais };
+  },
+  ["competencias-dados-estaticos"],
+  { revalidate: 300 } // 5 minutos
+);
 
 export default async function CompetenciasPage({
   searchParams,
@@ -46,25 +85,25 @@ export default async function CompetenciasPage({
         ],
       };
 
-  const [cards, grupos, usuarios, prioridades, empresas, etiquetas, regimes, tiposAtividade, filiais] = await Promise.all([
+  const [cards, { grupos, usuarios, prioridades, empresas, etiquetas, regimes, tiposAtividade, filiais }] = await Promise.all([
     prisma.competenciaCard.findMany({
       where: cardVisibilityWhere,
       include: {
         empresa: {
           include: {
-            regimeTributario: true,
-            tipoAtividade: true,
-            prioridade: true,
+            regimeTributario: { select: { id: true, nome: true, codigo: true } },
+            tipoAtividade: { select: { id: true, nome: true } },
+            prioridade: { select: { id: true, nome: true, cor: true } },
             filial: { select: { id: true, nome: true } },
-            grupos: { include: { grupo: true } },
+            grupos: { include: { grupo: { select: { id: true, nome: true, cor: true, exigirConferencia: true, exigirAbrirCard: true } } } },
             respElaboracao: { select: { id: true, nome: true, avatar: true } },
             respConferencia: { select: { id: true, nome: true, avatar: true } },
           },
         },
-        prioridade: true,
+        prioridade: { select: { id: true, nome: true, cor: true } },
         responsavel: { select: { id: true, nome: true, avatar: true } },
-        etapas: true,
-        etiquetas: { include: { etiqueta: true } },
+        etapas: { select: { id: true, etapa: true, status: true, resultadoConferencia: true, ressalvaResolvida: true } },
+        etiquetas: { include: { etiqueta: { select: { id: true, nome: true, cor: true } } } },
         _count: {
           select: {
             comentarios: true,
@@ -77,35 +116,7 @@ export default async function CompetenciasPage({
         { empresa: { razaoSocial: "asc" } },
       ],
     }),
-    prisma.grupo.findMany({
-      where: { escritorioId: usuario.escritorioId, ativo: true },
-      orderBy: { nome: "asc" },
-    }),
-    prisma.usuario.findMany({
-      where: { escritorioId: usuario.escritorioId, ativo: true },
-      select: { id: true, nome: true, avatar: true },
-    }),
-    prisma.prioridade.findMany({
-      where: { ativo: true },
-      orderBy: { nivel: "asc" },
-      select: { id: true, nome: true, cor: true, diasPrazo: true },
-    }),
-    prisma.empresa.findMany({
-      where: { escritorioId: usuario.escritorioId, ativa: true },
-      select: { id: true, razaoSocial: true, codigoInterno: true, prioridadeId: true },
-      orderBy: { razaoSocial: "asc" },
-    }),
-    prisma.etiqueta.findMany({
-      where: { ativo: true },
-      orderBy: { nome: "asc" },
-    }),
-    prisma.regimeTributario.findMany({ orderBy: { nome: "asc" } }),
-    prisma.tipoAtividade.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
-    prisma.filial.findMany({
-      where: { escritorioId: usuario.escritorioId, ativo: true },
-      select: { id: true, nome: true },
-      orderBy: { nome: "asc" },
-    }),
+    getDadosEstaticos(usuario.escritorioId),
   ]);
 
   const cardsSerialized = cards.map((c) => ({
