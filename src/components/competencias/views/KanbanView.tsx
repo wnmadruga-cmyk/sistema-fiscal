@@ -17,6 +17,9 @@ interface KanbanViewProps {
 
 const ETAPA_COLUMN_COLORS: Record<EtapaCard, string> = {
   BUSCA_DOCUMENTOS: "border-t-slate-400",
+  BAIXAR_NOTAS_ACESSO: "border-t-sky-400",
+  PEDIR_NOTAS_RECEITA_PR: "border-t-teal-400",
+  POSSIVEIS_SEM_MOVIMENTO: "border-t-gray-400",
   CONFERENCIA_APURACAO: "border-t-blue-400",
   CONFERENCIA: "border-t-indigo-400",
   TRANSMISSAO: "border-t-amber-400",

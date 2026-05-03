@@ -32,7 +32,9 @@ import {
   Download,
   FileImage,
   File as FileIcon,
+  Printer,
 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { LABEL_ETAPA, ORDEM_ETAPAS, etapasParaCard, formatCompetencia } from "@/lib/competencia-utils";
 import { formatDateTime } from "@/lib/utils";
 import { toast } from "sonner";
@@ -102,8 +104,25 @@ interface CardDetalheContentProps {
   usuarioAtual: Usuario;
 }
 
+const ETAPAS_COM_DOCS = new Set<EtapaCard>([
+  "BUSCA_DOCUMENTOS",
+  "BAIXAR_NOTAS_ACESSO",
+  "PEDIR_NOTAS_RECEITA_PR",
+]);
+
+const LABEL_TIPO_DOC: Record<string, string> = {
+  NFE: "NF-e (55)",
+  NFCE: "NFC-e (65)",
+  CTE: "CT-e",
+  NOTA_SERVICO: "NFS-e (Serviço)",
+  RECIBO_ALUGUEL: "Recibo de Aluguel",
+};
+
 const ETAPA_ICONS: Record<EtapaCard, React.ElementType> = {
   BUSCA_DOCUMENTOS: FileText,
+  BAIXAR_NOTAS_ACESSO: ChevronRight,
+  PEDIR_NOTAS_RECEITA_PR: ChevronRight,
+  POSSIVEIS_SEM_MOVIMENTO: ChevronRight,
   CONFERENCIA_APURACAO: CheckCircle,
   CONFERENCIA: CheckCircle,
   TRANSMISSAO: ChevronRight,
@@ -124,11 +143,35 @@ export function CardDetalheContent({
   const [urgente, setUrgente] = useState(card.urgente);
   const [semMovimento, setSemMovimento] = useState(card.semMovimento);
   const [readOnlyEtapa, setReadOnlyEtapa] = useState<typeof card.etapas[number] | null>(null);
+  const [confirmarProtocolo, setConfirmarProtocolo] = useState(false);
   const [comentarios, setComentarios] = useState(comentariosIniciais);
   const [novoComentario, setNovoComentario] = useState("");
   const [novosArquivos, setNovosArquivos] = useState<File[]>([]);
   const [novaObservacao, setNovaObservacao] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // Documentos marcados por etapa (optimistic)
+  const [docsEtapa, setDocsEtapa] = useState<Record<string, string[]>>(() => {
+    const m: Record<string, string[]> = {};
+    for (const e of card.etapas) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      m[e.etapa] = (e as any).documentosMarcados ?? [];
+    }
+    return m;
+  });
+
+  async function toggleDocumento(etapa: EtapaCard, tipo: string, estaMarcado: boolean) {
+    const lista = docsEtapa[etapa] ?? [];
+    const novaLista = estaMarcado
+      ? lista.filter((d) => d !== tipo)
+      : [...lista, tipo];
+    setDocsEtapa((prev) => ({ ...prev, [etapa]: novaLista }));
+    await fetch(`/api/competencias/${card.id}/etapas/documentos`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ etapa, tipoDocumento: tipo, marcado: !estaMarcado }),
+    });
+  }
 
   async function toggleUrgente(v: boolean) {
     setUrgente(v);
@@ -151,6 +194,43 @@ export function CardDetalheContent({
   }
 
   async function avancarEtapa(etapa: EtapaCard) {
+    // Validar documentos fiscais
+    if (ETAPAS_COM_DOCS.has(etapa)) {
+      const docsAtivos = card.empresa.configDocumentos.filter((d) => d.ativo);
+      if (docsAtivos.length > 0) {
+        const marcados = docsEtapa[etapa] ?? [];
+        const faltando = docsAtivos.filter((d) => !marcados.includes(d.tipoDocumento));
+        if (faltando.length > 0) {
+          toast.warning(
+            `Marque os documentos fiscais antes de avançar: ${faltando
+              .map((d) => LABEL_TIPO_DOC[d.tipoDocumento] ?? d.tipoDocumento)
+              .join(", ")}`
+          );
+          return;
+        }
+      }
+    }
+
+    // Validar checklists obrigatórios
+    const templatesEtapa = checklists.filter((c) => c.etapa === etapa && c.obrigatorio);
+    const cardEtapaData = card.etapas.find((e) => e.etapa === etapa);
+    const respostasMap = new Map((cardEtapaData?.respostas ?? []).map((r) => [r.item.id, r]));
+    for (const tpl of templatesEtapa) {
+      const itensFaltando = tpl.itens.filter((i) => i.obrigatorio && !respostasMap.get(i.id)?.marcado);
+      if (itensFaltando.length > 0) {
+        toast.warning(`Checklist "${tpl.nome}": preencha os itens obrigatórios antes de avançar.`);
+        return;
+      }
+    }
+
+    if (etapa === "IMPRESSAO_PROTOCOLO") {
+      setConfirmarProtocolo(true);
+      return;
+    }
+    await _chamarAvancarEtapa(etapa);
+  }
+
+  async function _chamarAvancarEtapa(etapa: EtapaCard) {
     const res = await fetch(`/api/competencias/${card.id}/etapas`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -413,6 +493,39 @@ export function CardDetalheContent({
                     cardEtapas={card.etapas}
                     checklists={checklists}
                   />
+
+                  {ETAPAS_COM_DOCS.has(card.etapaAtual) && card.empresa.configDocumentos.some((d) => d.ativo) && (
+                    <div className="border rounded-lg p-3 space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        Documentos Fiscais
+                      </p>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {card.empresa.configDocumentos.filter((d) => d.ativo).map((doc) => {
+                          const marcado = (docsEtapa[card.etapaAtual] ?? []).includes(doc.tipoDocumento);
+                          return (
+                            <label
+                              key={doc.tipoDocumento}
+                              className={`flex items-center gap-2 px-2 py-1.5 rounded-md border cursor-pointer transition-colors ${
+                                marcado
+                                  ? "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-900 dark:text-emerald-400"
+                                  : "hover:bg-muted"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={marcado}
+                                onChange={() => toggleDocumento(card.etapaAtual as EtapaCard, doc.tipoDocumento, marcado)}
+                                className="h-4 w-4 rounded border-input accent-emerald-600"
+                              />
+                              <span className="text-sm font-medium">
+                                {LABEL_TIPO_DOC[doc.tipoDocumento] ?? doc.tipoDocumento}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {card.empresa.configBuscas.length > 0 && card.etapaAtual === "BUSCA_DOCUMENTOS" && (
                     <div className="border rounded-lg p-3 space-y-2">
@@ -734,6 +847,34 @@ export function CardDetalheContent({
         open={!!readOnlyEtapa}
         onOpenChange={(v) => !v && setReadOnlyEtapa(null)}
       />
+
+      {/* Dialog confirmação de protocolo */}
+      <Dialog open={confirmarProtocolo} onOpenChange={setConfirmarProtocolo}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Printer className="h-5 w-5" />
+              Confirmar Protocolo
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground py-2">
+            Você já realizou a <strong>impressão</strong> e a entrega do <strong>protocolo</strong> para o cliente?
+          </p>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setConfirmarProtocolo(false)}>
+              Não, ainda não
+            </Button>
+            <Button
+              onClick={async () => {
+                setConfirmarProtocolo(false);
+                await _chamarAvancarEtapa("IMPRESSAO_PROTOCOLO");
+              }}
+            >
+              Sim, protocolo realizado
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

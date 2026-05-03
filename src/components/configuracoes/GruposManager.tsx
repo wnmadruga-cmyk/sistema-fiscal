@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,40 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Loader2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+type EtapaCard =
+  | "BUSCA_DOCUMENTOS"
+  | "BAIXAR_NOTAS_ACESSO"
+  | "PEDIR_NOTAS_RECEITA_PR"
+  | "POSSIVEIS_SEM_MOVIMENTO"
+  | "CONFERENCIA_APURACAO"
+  | "CONFERENCIA"
+  | "TRANSMISSAO"
+  | "ENVIO"
+  | "ENVIO_ACESSORIAS"
+  | "IMPRESSAO_PROTOCOLO"
+  | "CONCLUIDO";
+
+const ETAPAS: { value: EtapaCard; label: string }[] = [
+  { value: "BUSCA_DOCUMENTOS",        label: "Busca de Documentos" },
+  { value: "BAIXAR_NOTAS_ACESSO",     label: "Baixar Notas Acesso Sistema" },
+  { value: "PEDIR_NOTAS_RECEITA_PR",  label: "Pedir Notas Receita PR" },
+  { value: "POSSIVEIS_SEM_MOVIMENTO", label: "Possíveis Sem Movimento" },
+  { value: "CONFERENCIA_APURACAO",    label: "Conferência e Apuração" },
+  { value: "CONFERENCIA",             label: "Conferência" },
+  { value: "TRANSMISSAO",             label: "Transmissão" },
+  { value: "ENVIO",                   label: "Envio" },
+  { value: "ENVIO_ACESSORIAS",        label: "Enviado via Acessorias" },
+  { value: "IMPRESSAO_PROTOCOLO",     label: "Impressão e Protocolo" },
+  { value: "CONCLUIDO",               label: "Concluído" },
+];
 
 interface Grupo {
   id: string;
@@ -22,12 +56,13 @@ interface Grupo {
   sobrepoePrioridade: boolean;
   exigirAbrirCard: boolean;
   exigirConferencia: boolean;
+  etapaInicial: EtapaCard | null;
   empresasCount: number;
   empresaIds: string[];
 }
-interface Empresa { id: string; nome: string }
+interface Empresa { id: string; nome: string; codigoInterno?: string | null }
 
-const empty = { nome: "", descricao: "", cor: "#3b82f6", diasPrazo: null as number | null, sobrepoePrioridade: false, exigirAbrirCard: false, exigirConferencia: false, empresaIds: [] as string[] };
+const empty = { nome: "", descricao: "", cor: "#3b82f6", diasPrazo: null as number | null, sobrepoePrioridade: false, exigirAbrirCard: false, exigirConferencia: false, etapaInicial: null as EtapaCard | null, empresaIds: [] as string[] };
 
 export function GruposManager({ initial, empresas }: { initial: Grupo[]; empresas: Empresa[] }) {
   const router = useRouter();
@@ -36,11 +71,40 @@ export function GruposManager({ initial, empresas }: { initial: Grupo[]; empresa
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState("");
+  const [importText, setImportText] = useState("");
+  const [importTab, setImportTab] = useState<"lista" | "importar">("lista");
 
-  function openNew() { setEditing(null); setForm(empty); setOpen(true); }
+  const importResult = useMemo(() => {
+    if (!importText.trim()) return null;
+    const lines = importText.split("\n").map((l) => l.trim()).filter(Boolean);
+    const matched: string[] = [];
+    const unmatched: string[] = [];
+    for (const line of lines) {
+      const lower = line.toLowerCase();
+      const found = empresas.find(
+        (e) =>
+          (e.codigoInterno && e.codigoInterno.toLowerCase() === lower) ||
+          e.nome.toLowerCase() === lower
+      );
+      if (found) matched.push(found.id);
+      else unmatched.push(line);
+    }
+    return { matched, unmatched };
+  }, [importText, empresas]);
+
+  function applyImport() {
+    if (!importResult) return;
+    const merged = [...new Set([...form.empresaIds, ...importResult.matched])];
+    setForm((f) => ({ ...f, empresaIds: merged }));
+    setImportText("");
+    setImportTab("lista");
+  }
+
+  function openNew() { setEditing(null); setForm(empty); setImportText(""); setImportTab("lista"); setOpen(true); }
   function openEdit(g: Grupo) {
     setEditing(g);
-    setForm({ nome: g.nome, descricao: g.descricao ?? "", cor: g.cor ?? "#3b82f6", diasPrazo: g.diasPrazo, sobrepoePrioridade: g.sobrepoePrioridade, exigirAbrirCard: g.exigirAbrirCard, exigirConferencia: g.exigirConferencia, empresaIds: g.empresaIds });
+    setForm({ nome: g.nome, descricao: g.descricao ?? "", cor: g.cor ?? "#3b82f6", diasPrazo: g.diasPrazo, sobrepoePrioridade: g.sobrepoePrioridade, exigirAbrirCard: g.exigirAbrirCard, exigirConferencia: g.exigirConferencia, etapaInicial: g.etapaInicial, empresaIds: g.empresaIds });
+    setImportText(""); setImportTab("lista");
     setOpen(true);
   }
 
@@ -156,26 +220,104 @@ export function GruposManager({ initial, empresas }: { initial: Grupo[]; empresa
                 </div>
                 <Switch checked={form.exigirConferencia} onCheckedChange={(v) => setForm({ ...form, exigirConferencia: v })} />
               </div>
+              <div className="pt-2 border-t space-y-2">
+                <div>
+                  <Label>Etapa inicial do fluxo</Label>
+                  <p className="text-xs text-muted-foreground">Quando definida, empresas deste grupo iniciam a competência nesta etapa, ignorando todas as demais regras de fluxo inicial.</p>
+                </div>
+                <Select
+                  value={form.etapaInicial ?? "__none__"}
+                  onValueChange={(v) => setForm({ ...form, etapaInicial: v === "__none__" ? null : (v as EtapaCard) })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sem override (usa regras gerais)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">
+                      <span className="text-muted-foreground">Sem override — usa regras gerais</span>
+                    </SelectItem>
+                    {ETAPAS.map((e) => (
+                      <SelectItem key={e.value} value={e.value}>
+                        {e.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="space-y-2 border-t pt-3">
               <div className="flex items-center justify-between">
                 <Label>Empresas vinculadas ({form.empresaIds.length})</Label>
-                <Input placeholder="Buscar..." value={filter} onChange={(e) => setFilter(e.target.value)} className="max-w-xs h-8" />
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setImportTab("lista")}
+                    className={`text-xs px-2.5 py-1 rounded border transition-colors ${importTab === "lista" ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border hover:bg-muted"}`}
+                  >
+                    Lista
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setImportTab("importar")}
+                    className={`text-xs px-2.5 py-1 rounded border transition-colors ${importTab === "importar" ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border hover:bg-muted"}`}
+                  >
+                    Importar
+                  </button>
+                </div>
               </div>
-              <div className="max-h-64 overflow-y-auto border rounded p-2 space-y-1">
-                {filtered.length === 0 && <p className="text-xs text-muted-foreground p-2">Nenhuma empresa</p>}
-                {filtered.map((e) => (
-                  <label key={e.id} className="flex items-center gap-2 p-1.5 hover:bg-muted rounded cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={form.empresaIds.includes(e.id)}
-                      onChange={() => toggle(e.id)}
-                    />
-                    <span className="text-sm">{e.nome}</span>
-                  </label>
-                ))}
-              </div>
+
+              {importTab === "lista" && (
+                <>
+                  <Input placeholder="Buscar..." value={filter} onChange={(e) => setFilter(e.target.value)} className="h-8" />
+                  <div className="max-h-56 overflow-y-auto border rounded p-2 space-y-1">
+                    {filtered.length === 0 && <p className="text-xs text-muted-foreground p-2">Nenhuma empresa</p>}
+                    {filtered.map((e) => (
+                      <label key={e.id} className="flex items-center gap-2 p-1.5 hover:bg-muted rounded cursor-pointer">
+                        <input type="checkbox" checked={form.empresaIds.includes(e.id)} onChange={() => toggle(e.id)} />
+                        <span className="text-sm">
+                          {e.codigoInterno && <span className="text-xs text-muted-foreground font-mono mr-1.5">{e.codigoInterno}</span>}
+                          {e.nome}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {importTab === "importar" && (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Cole uma lista (um por linha) com código interno ou nome da empresa. Matches parciais de nome não são aceitos — o nome deve ser exato.
+                  </p>
+                  <Textarea
+                    value={importText}
+                    onChange={(e) => setImportText(e.target.value)}
+                    placeholder={"001\n002\nEmpresa X\nEmpresa Y"}
+                    rows={6}
+                    className="font-mono text-xs"
+                  />
+                  {importResult && importResult.unmatched.length > 0 && (
+                    <div className="rounded bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-2">
+                      <p className="text-xs font-medium text-amber-700 dark:text-amber-400 mb-1">Não encontrados ({importResult.unmatched.length}):</p>
+                      <ul className="text-xs text-amber-600 dark:text-amber-500 space-y-0.5">
+                        {importResult.unmatched.map((u) => <li key={u} className="font-mono">{u}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {importResult && importResult.matched.length > 0 && (
+                    <p className="text-xs text-emerald-600 dark:text-emerald-400">{importResult.matched.length} empresa(s) encontrada(s)</p>
+                  )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={!importResult || importResult.matched.length === 0}
+                    onClick={applyImport}
+                  >
+                    Adicionar ao grupo
+                  </Button>
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end gap-2">

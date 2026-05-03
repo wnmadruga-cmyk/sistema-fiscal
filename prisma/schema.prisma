@@ -32,6 +32,7 @@ model Escritorio {
   filiais        Filial[]
 
   usuarioConferenciaPadrao Usuario? @relation("EscritorioConferenciaPadrao", fields: [usuarioConferenciaPadraoId], references: [id])
+  regrasFluxo              RegraFluxoInicial[]
 
   @@map("escritorios")
 }
@@ -78,18 +79,19 @@ model Prioridade {
 }
 
 model Grupo {
-  id                  String   @id @default(cuid())
+  id                  String     @id @default(cuid())
   escritorioId        String
   nome                String
   descricao           String?
   cor                 String?
   diasPrazo           Int?
-  sobrepoePrioridade  Boolean  @default(false)
-  exigirAbrirCard     Boolean  @default(false)
-  exigirConferencia   Boolean  @default(false)
-  ativo               Boolean  @default(true)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  sobrepoePrioridade  Boolean    @default(false)
+  exigirAbrirCard     Boolean    @default(false)
+  exigirConferencia   Boolean    @default(false)
+  etapaInicial        EtapaCard?
+  ativo               Boolean    @default(true)
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
 
   escritorio      Escritorio          @relation(fields: [escritorioId], references: [id])
   empresas        EmpresaGrupo[]
@@ -150,9 +152,10 @@ model Usuario {
   erros              ControleQualidade[]
   arquivos           Arquivo[]
   observacoes        Observacao[]
-  checklistRespostas ChecklistResposta[]
-  notificacoes       Notificacao[]
-  eventos            CardEvento[]
+  checklistRespostas      ChecklistResposta[]
+  notificacoes            Notificacao[]
+  eventos                 CardEvento[]
+  etapasConfigResponsavel EtapaConfig[] @relation("EtapaConfigResponsavel")
 
   @@map("usuarios")
 }
@@ -270,6 +273,33 @@ model EmpresaEtiqueta {
 }
 
 // ─────────────────────────────────────────
+// DOMÍNIO: CONFIGURAÇÃO DE FLUXO INICIAL
+// ─────────────────────────────────────────
+
+enum TipoRegraFluxo {
+  ORIGEM_ESCRITORIO       // NFs com origem "Escritório"
+  ORIGEM_TERCEIROS_ACESSO // NFs com origem "Terceiros" via acesso ao sistema/software
+  ORIGEM_RECEITA_PR       // NFs via Receita-PR
+  ORIGEM_EMAIL_WHATSAPP   // NFs via E-mail ou WhatsApp
+  SEM_MOVIMENTO_TEMP      // Empresas com "Sem Movimento Temporário" ativo
+}
+
+model RegraFluxoInicial {
+  id           String         @id @default(cuid())
+  escritorioId String
+  tipo         TipoRegraFluxo
+  etapaInicial EtapaCard
+  ativo        Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  escritorio Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+
+  @@unique([escritorioId, tipo])
+  @@map("regras_fluxo_inicial")
+}
+
+// ─────────────────────────────────────────
 // DOMÍNIO: DOCUMENTOS FISCAIS
 // ─────────────────────────────────────────
 
@@ -371,6 +401,9 @@ enum StatusCard {
 
 enum EtapaCard {
   BUSCA_DOCUMENTOS
+  BAIXAR_NOTAS_ACESSO
+  PEDIR_NOTAS_RECEITA_PR
+  POSSIVEIS_SEM_MOVIMENTO
   CONFERENCIA_APURACAO
   CONFERENCIA
   TRANSMISSAO
@@ -468,6 +501,7 @@ model CardEtapa {
   etapa               EtapaCard
   status              StatusEtapa           @default(PENDENTE)
   responsavelId       String?
+  prazo               DateTime?
   iniciadoEm          DateTime?
   concluidoEm         DateTime?
   observacao          String?
@@ -475,6 +509,7 @@ model CardEtapa {
   resultadoConferencia ResultadoConferencia?
   comentarioRessalva  String?
   ressalvaResolvida   Boolean               @default(false)
+  documentosMarcados  TipoDocumento[]       @default([])
 
   card      CompetenciaCard     @relation(fields: [cardId], references: [id], onDelete: Cascade)
   respostas ChecklistResposta[]
@@ -485,19 +520,22 @@ model CardEtapa {
 
 // Configuração de etapas por escritório (nome custom, ordem, manual)
 model EtapaConfig {
-  id               String    @id @default(cuid())
-  escritorioId     String
-  etapa            EtapaCard
-  nome             String
-  ordem            Int       @default(0)
-  ativa            Boolean   @default(true)
-  manualPdfUrl     String?
-  manualVideoUrl   String?
-  manualObservacao String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  id                  String    @id @default(cuid())
+  escritorioId        String
+  etapa               EtapaCard
+  nome                String
+  ordem               Int       @default(0)
+  ativa               Boolean   @default(true)
+  manualPdfUrl        String?
+  manualVideoUrl      String?
+  manualObservacao    String?
+  responsavelPadraoId String?
+  diasPrazo           Int?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
-  escritorio Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+  escritorio        Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+  responsavelPadrao Usuario?   @relation("EtapaConfigResponsavel", fields: [responsavelPadraoId], references: [id])
 
   @@unique([escritorioId, etapa])
   @@map("etapas_config")

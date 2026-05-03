@@ -3,6 +3,20 @@ import { prisma } from "@/lib/prisma";
 import { ok, created, serverError, unauthorized, badRequest } from "@/lib/api-response";
 import { z } from "zod";
 
+const etapaCardEnum = z.enum([
+  "BUSCA_DOCUMENTOS",
+  "BAIXAR_NOTAS_ACESSO",
+  "PEDIR_NOTAS_RECEITA_PR",
+  "POSSIVEIS_SEM_MOVIMENTO",
+  "CONFERENCIA_APURACAO",
+  "CONFERENCIA",
+  "TRANSMISSAO",
+  "ENVIO",
+  "ENVIO_ACESSORIAS",
+  "IMPRESSAO_PROTOCOLO",
+  "CONCLUIDO",
+]);
+
 const createSchema = z.object({
   nome: z.string().min(1),
   descricao: z.string().optional(),
@@ -11,6 +25,7 @@ const createSchema = z.object({
   sobrepoePrioridade: z.boolean().optional(),
   exigirAbrirCard: z.boolean().optional(),
   exigirConferencia: z.boolean().optional(),
+  etapaInicial: etapaCardEnum.nullable().optional(),
   empresaIds: z.array(z.string()).optional(),
 });
 

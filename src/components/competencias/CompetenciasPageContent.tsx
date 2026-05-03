@@ -21,8 +21,7 @@ import { rowsToCsv } from "@/lib/csv";
 import { LABEL_ETAPA } from "@/lib/competencia-utils";
 import { TabelaView } from "./views/TabelaView";
 import { KanbanView } from "./views/KanbanView";
-import { GerarCompetenciaDialog } from "./GerarCompetenciaDialog";
-import { ExcluirCompetenciaButton } from "./ExcluirCompetenciaButton";
+import { GerenciarDropdown } from "./GerenciarDropdown";
 import { ColumnConfigPopover, type ColumnKey, DEFAULT_COLUMNS } from "./ColumnConfigPopover";
 import { competenciaLabel, proxCompetencia, competenciaAnterior } from "@/lib/competencia-utils";
 import type { EtapaCard, StatusCard, SituacaoFolha } from "@prisma/client";
@@ -88,6 +87,7 @@ interface CompetenciasPageContentProps {
   regimes: { id: string; codigo: string; nome: string }[];
   tiposAtividade: { id: string; nome: string }[];
   filiais: { id: string; nome: string }[];
+  etapasConfig: { etapa: string; diasPrazo: number | null }[];
 }
 
 type AdvFilters = {
@@ -136,6 +136,7 @@ export function CompetenciasPageContent({
   regimes,
   tiposAtividade,
   filiais,
+  etapasConfig,
 }: CompetenciasPageContentProps) {
   const isPrivileged = usuarioPerfil === "ADMIN" || usuarioPerfil === "GERENTE";
   const router = useRouter();
@@ -280,8 +281,15 @@ export function CompetenciasPageContent({
           <Badge variant="secondary">
             {concluidosCount}/{cards.length} concluídos
           </Badge>
-          {isPrivileged && <GerarCompetenciaDialog competencia={competencia} prioridades={prioridades} empresas={empresas} />}
-          {isPrivileged && <ExcluirCompetenciaButton competencia={competencia} total={cards.length} />}
+          {isPrivileged && (
+            <GerenciarDropdown
+              competencia={competencia}
+              prioridades={prioridades}
+              empresas={empresas}
+              etapasConfig={etapasConfig}
+              total={cards.length}
+            />
+          )}
           <Button variant="outline" size="sm" className="h-8 gap-1" onClick={exportarCsv} title="Exportar CSV (filtros e colunas atuais)">
             <Download className="h-3.5 w-3.5" /> Exportar
           </Button>

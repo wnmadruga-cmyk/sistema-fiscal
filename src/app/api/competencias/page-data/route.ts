@@ -6,7 +6,7 @@ import { unstable_cache } from "next/cache";
 // Dados de referência com cache de 5 minutos por escritório
 const getDadosEstaticos = unstable_cache(
   async (escritorioId: string) => {
-    const [grupos, usuarios, prioridades, empresas, etiquetas, regimes, tiposAtividade, filiais] =
+    const [grupos, usuarios, prioridades, empresas, etiquetas, regimes, tiposAtividade, filiais, etapasConfig] =
       await Promise.all([
         prisma.grupo.findMany({
           where: { escritorioId, ativo: true },
@@ -34,8 +34,12 @@ const getDadosEstaticos = unstable_cache(
           select: { id: true, nome: true },
           orderBy: { nome: "asc" },
         }),
+        prisma.etapaConfig.findMany({
+          where: { escritorioId },
+          select: { etapa: true, diasPrazo: true },
+        }),
       ]);
-    return { grupos, usuarios, prioridades, empresas, etiquetas, regimes, tiposAtividade, filiais };
+    return { grupos, usuarios, prioridades, empresas, etiquetas, regimes, tiposAtividade, filiais, etapasConfig };
   },
   ["page-data-estaticos"],
   { revalidate: 300 }

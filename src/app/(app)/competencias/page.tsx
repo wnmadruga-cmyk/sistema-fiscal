@@ -51,6 +51,7 @@ export default function CompetenciasPage() {
       regimes={metadata.regimes}
       tiposAtividade={metadata.tiposAtividade}
       filiais={metadata.filiais}
+      etapasConfig={metadata.etapasConfig ?? []}
     />
   );
 }

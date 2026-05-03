@@ -3,6 +3,20 @@ import { prisma } from "@/lib/prisma";
 import { ok, noContent, serverError, unauthorized, badRequest, notFound } from "@/lib/api-response";
 import { z } from "zod";
 
+const etapaCardEnum = z.enum([
+  "BUSCA_DOCUMENTOS",
+  "BAIXAR_NOTAS_ACESSO",
+  "PEDIR_NOTAS_RECEITA_PR",
+  "POSSIVEIS_SEM_MOVIMENTO",
+  "CONFERENCIA_APURACAO",
+  "CONFERENCIA",
+  "TRANSMISSAO",
+  "ENVIO",
+  "ENVIO_ACESSORIAS",
+  "IMPRESSAO_PROTOCOLO",
+  "CONCLUIDO",
+]);
+
 const updateSchema = z.object({
   nome: z.string().min(1).optional(),
   descricao: z.string().optional().nullable(),
@@ -11,6 +25,7 @@ const updateSchema = z.object({
   sobrepoePrioridade: z.boolean().optional(),
   exigirAbrirCard: z.boolean().optional(),
   exigirConferencia: z.boolean().optional(),
+  etapaInicial: etapaCardEnum.nullable().optional(),
   ativo: z.boolean().optional(),
   empresaIds: z.array(z.string()).optional(),
 });
@@ -34,7 +49,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         ? await tx.grupo.update({ where: { id }, data })
         : await tx.grupo.findUniqueOrThrow({ where: { id } });
 
-      if (empresaIds) {
+      // Se o grupo foi inativado, remove todos os vínculos com empresas
+      if (data.ativo === false) {
+        await tx.empresaGrupo.deleteMany({ where: { grupoId: id } });
+      } else if (empresaIds !== undefined) {
         const empresas = await tx.empresa.findMany({
           where: { id: { in: empresaIds }, escritorioId: usuario.escritorioId },
           select: { id: true },
@@ -65,7 +83,13 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
       where: { id, escritorioId: usuario.escritorioId },
     });
     if (!existing) return notFound();
-    await prisma.grupo.update({ where: { id }, data: { ativo: false } });
+
+    await prisma.$transaction([
+      // Remove todos os vínculos empresa-grupo antes de inativar
+      prisma.empresaGrupo.deleteMany({ where: { grupoId: id } }),
+      prisma.grupo.update({ where: { id }, data: { ativo: false } }),
+    ]);
+
     return noContent();
   } catch (error) {
     if ((error as Error).message === "UNAUTHORIZED") return unauthorized();

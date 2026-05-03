@@ -5,11 +5,15 @@ import { z } from "zod";
 
 const ETAPAS = [
   "BUSCA_DOCUMENTOS",
+  "BAIXAR_NOTAS_ACESSO",
+  "PEDIR_NOTAS_RECEITA_PR",
+  "POSSIVEIS_SEM_MOVIMENTO",
   "CONFERENCIA_APURACAO",
   "CONFERENCIA",
   "TRANSMISSAO",
   "ENVIO",
   "ENVIO_ACESSORIAS",
+  "IMPRESSAO_PROTOCOLO",
   "CONCLUIDO",
 ] as const;
 
@@ -21,6 +25,8 @@ const upsertSchema = z.object({
   manualPdfUrl: z.string().optional().nullable(),
   manualVideoUrl: z.string().optional().nullable(),
   manualObservacao: z.string().optional().nullable(),
+  responsavelPadraoId: z.string().optional().nullable(),
+  diasPrazo: z.number().int().min(0).optional().nullable(),
 });
 
 export async function GET() {

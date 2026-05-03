@@ -4,10 +4,19 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-export function ExcluirCompetenciaButton({ competencia, total }: { competencia: string; total: number }) {
+export function ExcluirCompetenciaButton({
+  competencia,
+  total,
+  asMenuItem,
+}: {
+  competencia: string;
+  total: number;
+  asMenuItem?: boolean;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -29,17 +38,29 @@ export function ExcluirCompetenciaButton({ competencia, total }: { competencia: 
     router.refresh();
   }
 
+  const trigger = asMenuItem ? (
+    <DropdownMenuItem
+      onSelect={(e) => { e.preventDefault(); setOpen(true); }}
+      disabled={total === 0}
+      className="text-red-600 focus:text-red-600"
+    >
+      <Trash2 className="h-4 w-4 mr-2" /> Excluir Competência
+    </DropdownMenuItem>
+  ) : (
+    <Button
+      variant="outline"
+      size="sm"
+      className="border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
+      onClick={() => setOpen(true)}
+      disabled={total === 0}
+    >
+      <Trash2 className="h-4 w-4 mr-1" /> Excluir competência
+    </Button>
+  );
+
   return (
     <>
-      <Button
-        variant="outline"
-        size="sm"
-        className="border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
-        onClick={() => setOpen(true)}
-        disabled={total === 0}
-      >
-        <Trash2 className="h-4 w-4 mr-1" /> Excluir competência
-      </Button>
+      {trigger}
 
       <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setConfirma(""); }}>
         <DialogContent>

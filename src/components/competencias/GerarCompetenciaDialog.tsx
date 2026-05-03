@@ -14,28 +14,47 @@ import { competenciaLabel } from "@/lib/competencia-utils";
 interface Prioridade { id: string; nome: string; cor: string; diasPrazo: number }
 interface Empresa { id: string; nome: string; prioridadeId: string | null }
 
+interface GerarCompetenciaDialogProps {
+  competencia: string;
+  prioridades: Prioridade[];
+  empresas: Empresa[];
+  trigger?: React.ReactNode;
+  // External control (used from GerenciarDropdown)
+  open?: boolean;
+  onOpenChange?: (v: boolean) => void;
+  // Pre-calculated date overrides (ISO date strings keyed by prioridadeId / etapa)
+  prazosOverride?: Record<string, string>;
+  prazosEtapasOverride?: Record<string, string>;
+  // When true, the competencia field is read-only (prazos were calculated for this exact competencia)
+  competenciaFixed?: boolean;
+}
+
 export function GerarCompetenciaDialog({
   competencia,
   prioridades,
   empresas,
   trigger,
-}: {
-  competencia: string;
-  prioridades: Prioridade[];
-  empresas: Empresa[];
-  trigger?: React.ReactNode;
-}) {
+  open: openProp,
+  onOpenChange: onOpenChangeProp,
+  prazosOverride,
+  prazosEtapasOverride,
+  competenciaFixed,
+}: GerarCompetenciaDialogProps) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [openInternal, setOpenInternal] = useState(false);
   const [todas, setTodas] = useState(true);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [comp, setComp] = useState(competencia);
-  const [overridePrazos, setOverridePrazos] = useState(false);
-  const [prazos, setPrazos] = useState<Record<string, number>>(() =>
-    Object.fromEntries(prioridades.map((p) => [p.id, p.diasPrazo]))
-  );
   const [saving, setSaving] = useState(false);
+
+  // Support both controlled (from dropdown) and uncontrolled usage
+  const isControlled = openProp !== undefined;
+  const open = isControlled ? openProp! : openInternal;
+  function setOpen(v: boolean) {
+    if (isControlled) onOpenChangeProp?.(v);
+    else setOpenInternal(v);
+  }
 
   const filtered = useMemo(
     () => empresas.filter((e) => e.nome.toLowerCase().includes(search.toLowerCase())),
@@ -58,7 +77,8 @@ export function GerarCompetenciaDialog({
     setSaving(true);
     const body: Record<string, unknown> = { competencia: comp };
     if (!todas) body.empresaIds = Array.from(selectedIds);
-    if (overridePrazos) body.prazosOverride = prazos;
+    if (prazosOverride) body.prazosOverride = prazosOverride;
+    if (prazosEtapasOverride) body.prazosEtapasOverride = prazosEtapasOverride;
 
     const res = await fetch("/api/competencias", {
       method: "POST",
@@ -80,21 +100,40 @@ export function GerarCompetenciaDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      {trigger ? (
+      {!isControlled && (trigger ? (
         <span onClick={() => setOpen(true)}>{trigger}</span>
       ) : (
         <Button size="sm" onClick={() => setOpen(true)}>
           <Sparkles className="h-4 w-4 mr-1" /> Gerar Competência
         </Button>
-      )}
+      ))}
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>Gerar Competência {competenciaLabel(comp)}</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>Gerar Competência {competenciaLabel(comp)}</DialogTitle>
+        </DialogHeader>
 
         <div className="space-y-4">
-          <div className="space-y-1">
-            <Label>Competência (AAAA-MM)</Label>
-            <Input value={comp} onChange={(e) => setComp(e.target.value)} placeholder="2026-04" />
-          </div>
+          {!competenciaFixed && (
+            <div className="space-y-1">
+              <Label>Competência (AAAA-MM)</Label>
+              <Input value={comp} onChange={(e) => setComp(e.target.value)} placeholder="2026-04" />
+            </div>
+          )}
+
+          {prazosOverride && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20 dark:border-emerald-800 p-3">
+              <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
+                Prazos calculados e prontos para uso
+              </p>
+              <div className="mt-1.5 grid grid-cols-2 gap-1">
+                {prioridades.map((p) => (
+                  <span key={p.id} className="text-xs text-emerald-600 dark:text-emerald-500">
+                    <span className="font-medium">{p.nome}:</span> {prazosOverride[p.id] ?? "—"}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="border rounded p-3 bg-muted/20 space-y-3">
             <div className="flex items-center justify-between">
@@ -117,34 +156,6 @@ export function GerarCompetenciaDialog({
                   ))}
                 </div>
                 <p className="text-xs text-muted-foreground">{selectedIds.size} selecionada{selectedIds.size !== 1 ? "s" : ""}</p>
-              </div>
-            )}
-          </div>
-
-          <div className="border rounded p-3 bg-muted/20 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label>Sobrescrever prazos (apenas para esta geração)</Label>
-                <p className="text-xs text-muted-foreground">Por padrão usa o prazo cadastrado em cada prioridade. Grupos com sobreposição ativa têm precedência.</p>
-              </div>
-              <Switch checked={overridePrazos} onCheckedChange={setOverridePrazos} />
-            </div>
-            {overridePrazos && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {prioridades.map((p) => (
-                  <div key={p.id} className="space-y-1">
-                    <Label className="flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-full" style={{ background: p.cor }} />
-                      {p.nome}
-                    </Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={prazos[p.id] ?? 0}
-                      onChange={(e) => setPrazos((prev) => ({ ...prev, [p.id]: parseInt(e.target.value) || 0 }))}
-                    />
-                  </div>
-                ))}
               </div>
             )}
           </div>

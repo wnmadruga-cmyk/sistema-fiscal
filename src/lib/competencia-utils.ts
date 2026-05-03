@@ -50,6 +50,9 @@ export function competenciaAtual(): string {
 
 export const ORDEM_ETAPAS: EtapaCard[] = [
   EtapaCard.BUSCA_DOCUMENTOS,
+  EtapaCard.BAIXAR_NOTAS_ACESSO,
+  EtapaCard.PEDIR_NOTAS_RECEITA_PR,
+  EtapaCard.POSSIVEIS_SEM_MOVIMENTO,
   EtapaCard.CONFERENCIA_APURACAO,
   EtapaCard.CONFERENCIA,
   EtapaCard.TRANSMISSAO,
@@ -61,17 +64,23 @@ export const ORDEM_ETAPAS: EtapaCard[] = [
 
 export const LABEL_ETAPA: Record<EtapaCard, string> = {
   BUSCA_DOCUMENTOS: "Busca de Documentos",
+  BAIXAR_NOTAS_ACESSO: "Baixar Notas Acesso Sistema",
+  PEDIR_NOTAS_RECEITA_PR: "Pedir Notas Receita PR",
+  POSSIVEIS_SEM_MOVIMENTO: "Possíveis Sem Movimento",
   CONFERENCIA_APURACAO: "Conferência e Apuração",
   CONFERENCIA: "Conferência",
   TRANSMISSAO: "Transmissão",
   ENVIO: "Envio",
   ENVIO_ACESSORIAS: "Enviado via Acessorias",
-  IMPRESSAO_PROTOCOLO: "Impresso e Protocolo",
+  IMPRESSAO_PROTOCOLO: "Impressão e Protocolo",
   CONCLUIDO: "Concluído",
 };
 
 export const LABEL_ETAPA_CURTO: Record<EtapaCard, string> = {
   BUSCA_DOCUMENTOS: "Busca",
+  BAIXAR_NOTAS_ACESSO: "Acesso",
+  PEDIR_NOTAS_RECEITA_PR: "Receita",
+  POSSIVEIS_SEM_MOVIMENTO: "S/Mov.",
   CONFERENCIA_APURACAO: "Apur.",
   CONFERENCIA: "Conf.",
   TRANSMISSAO: "Transm.",
@@ -91,8 +100,20 @@ export function etapasParaCard(opts: {
   exigirConferencia: boolean;
   conferenciaForcada?: boolean;
   exigirImpressao?: boolean;
+  incluiBaixarNotasAcesso?: boolean;
+  incluiPedirNotasReceita?: boolean;
+  incluiPossiveisSemMovimento?: boolean;
 }): EtapaCard[] {
   let etapas = ORDEM_ETAPAS;
+  if (!opts.incluiBaixarNotasAcesso) {
+    etapas = etapas.filter((e) => e !== EtapaCard.BAIXAR_NOTAS_ACESSO);
+  }
+  if (!opts.incluiPedirNotasReceita) {
+    etapas = etapas.filter((e) => e !== EtapaCard.PEDIR_NOTAS_RECEITA_PR);
+  }
+  if (!opts.incluiPossiveisSemMovimento) {
+    etapas = etapas.filter((e) => e !== EtapaCard.POSSIVEIS_SEM_MOVIMENTO);
+  }
   if (!(opts.exigirConferencia || opts.conferenciaForcada)) {
     etapas = etapas.filter((e) => e !== EtapaCard.CONFERENCIA);
   }

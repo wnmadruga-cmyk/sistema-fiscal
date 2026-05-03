@@ -9,6 +9,13 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 import { BookOpen, Loader2, FileText, Video } from "lucide-react";
 
@@ -21,9 +28,13 @@ interface EtapaItem {
   manualPdfUrl: string | null;
   manualVideoUrl: string | null;
   manualObservacao: string | null;
+  responsavelPadraoId: string | null;
+  diasPrazo: number | null;
 }
 
-export function EtapasManager({ etapas: initial }: { etapas: EtapaItem[] }) {
+interface Usuario { id: string; nome: string }
+
+export function EtapasManager({ etapas: initial, usuarios }: { etapas: EtapaItem[]; usuarios: Usuario[] }) {
   const router = useRouter();
   const [etapas, setEtapas] = useState(initial);
   const [savingIdx, setSavingIdx] = useState<number | null>(null);
@@ -46,6 +57,8 @@ export function EtapasManager({ etapas: initial }: { etapas: EtapaItem[] }) {
         manualPdfUrl: e.manualPdfUrl || null,
         manualVideoUrl: e.manualVideoUrl || null,
         manualObservacao: e.manualObservacao || null,
+        responsavelPadraoId: e.responsavelPadraoId || null,
+        diasPrazo: e.diasPrazo ?? null,
       }),
     });
     setSavingIdx(null);
@@ -65,12 +78,12 @@ export function EtapasManager({ etapas: initial }: { etapas: EtapaItem[] }) {
       {etapas.map((e, idx) => (
         <Card key={e.etapa}>
           <CardContent className="p-4 space-y-3">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <span className="text-xs font-mono bg-muted px-2 py-1 rounded">{e.ordem}</span>
               <Input
                 value={e.nome}
                 onChange={(ev) => update(idx, { nome: ev.target.value })}
-                className="flex-1 font-medium"
+                className="flex-1 min-w-40 font-medium"
               />
               <div className="flex items-center gap-2">
                 <Label className="text-xs">Ativa</Label>
@@ -124,8 +137,45 @@ export function EtapasManager({ etapas: initial }: { etapas: EtapaItem[] }) {
                 {savingIdx === idx ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar"}
               </Button>
             </div>
+
+            <div className="flex gap-4 flex-wrap pl-10">
+              <div className="space-y-1 flex-1 min-w-48">
+                <Label className="text-xs text-muted-foreground">Responsável padrão</Label>
+                <Select
+                  value={e.responsavelPadraoId ?? "__none__"}
+                  onValueChange={(v) => update(idx, { responsavelPadraoId: v === "__none__" ? null : v })}
+                >
+                  <SelectTrigger className="h-8 text-sm">
+                    <SelectValue placeholder="Sem responsável padrão" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">
+                      <span className="text-muted-foreground">Sem responsável padrão</span>
+                    </SelectItem>
+                    {usuarios.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1 w-44">
+                <Label className="text-xs text-muted-foreground">Prazo (dias após fim do mês)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  placeholder="Sem prazo"
+                  className="h-8 text-sm"
+                  value={e.diasPrazo ?? ""}
+                  onChange={(ev) => {
+                    const v = ev.target.value;
+                    update(idx, { diasPrazo: v === "" ? null : parseInt(v) || 0 });
+                  }}
+                />
+              </div>
+            </div>
+
             {(e.manualPdfUrl || e.manualVideoUrl || e.manualObservacao) && (
-              <div className="text-xs text-muted-foreground flex gap-3 pl-12">
+              <div className="text-xs text-muted-foreground flex gap-3 pl-10">
                 {e.manualPdfUrl && <span>📄 PDF</span>}
                 {e.manualVideoUrl && <span>🎥 Vídeo</span>}
                 {e.manualObservacao && <span>📝 Observação</span>}

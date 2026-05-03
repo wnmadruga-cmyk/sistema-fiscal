@@ -19,7 +19,7 @@ const getGruposData = unstable_cache(
       }),
       prisma.empresa.findMany({
         where: { escritorioId, ativa: true },
-        select: { id: true, razaoSocial: true, nomeFantasia: true },
+        select: { id: true, razaoSocial: true, nomeFantasia: true, codigoInterno: true },
         orderBy: { razaoSocial: "asc" },
       }),
     ]),
@@ -32,7 +32,7 @@ export default async function GruposPage() {
   if (!supabaseUser || !usuario) redirect("/login");
 
   const [grupos, empresas] = await getGruposData(usuario.escritorioId);
-  const empresasLookup = empresas.map((e) => ({ id: e.id, nome: e.nomeFantasia ?? e.razaoSocial }));
+  const empresasLookup = empresas.map((e) => ({ id: e.id, nome: e.nomeFantasia ?? e.razaoSocial, codigoInterno: e.codigoInterno }));
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -52,6 +52,8 @@ export default async function GruposPage() {
           sobrepoePrioridade: g.sobrepoePrioridade,
           exigirAbrirCard: g.exigirAbrirCard,
           exigirConferencia: g.exigirConferencia,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          etapaInicial: (g as any).etapaInicial ?? null,
           empresasCount: g._count.empresas,
           empresaIds: g.empresas.map((e) => e.empresaId),
         }))}

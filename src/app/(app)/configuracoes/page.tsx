@@ -10,6 +10,8 @@ import {
   AlertTriangle,
   Inbox,
   Briefcase,
+  GitBranch,
+  ArrowLeftRight,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -79,6 +81,18 @@ const configSections = [
     description: "Categorias de atividade econômica (Comércio, Serviços...)",
     href: "/configuracoes/tipos-atividade",
     icon: Briefcase,
+  },
+  {
+    title: "Fluxo Inicial da Competência",
+    description: "Define em qual etapa cada competência começa conforme origem das NFs ou grupo",
+    href: "/configuracoes/fluxo-inicial",
+    icon: GitBranch,
+  },
+  {
+    title: "Transferência de Responsáveis",
+    description: "Reatribuir responsáveis de elaboração, busca ou conferência em lote",
+    href: "/configuracoes/responsaveis",
+    icon: ArrowLeftRight,
   },
 ];
 
