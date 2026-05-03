@@ -1,3 +1,4 @@
+import { revalidateTag } from "next/cache";
 import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ok, created, serverError, unauthorized, badRequest } from "@/lib/api-response";
@@ -70,6 +71,7 @@ export async function POST(request: Request) {
       return g;
     });
 
+    revalidateTag("grupos");
     return created(grupo);
   } catch (error) {
     if ((error as Error).message === "UNAUTHORIZED") return unauthorized();

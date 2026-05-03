@@ -1,3 +1,4 @@
+import { revalidateTag } from "next/cache";
 import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ok, noContent, serverError, unauthorized, badRequest, notFound } from "@/lib/api-response";
@@ -68,6 +69,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       return updated;
     });
 
+    revalidateTag("grupos");
     return ok(grupo);
   } catch (error) {
     if ((error as Error).message === "UNAUTHORIZED") return unauthorized();
@@ -90,6 +92,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
       prisma.grupo.update({ where: { id }, data: { ativo: false } }),
     ]);
 
+    revalidateTag("grupos");
     return noContent();
   } catch (error) {
     if ((error as Error).message === "UNAUTHORIZED") return unauthorized();
