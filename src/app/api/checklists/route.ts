@@ -1,3 +1,4 @@
+import { revalidateTag } from "next/cache";
 import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ok, serverError, unauthorized, badRequest, created } from "@/lib/api-response";
@@ -85,6 +86,7 @@ export async function POST(request: Request) {
         grupos: { include: { grupo: { select: { id: true, nome: true, cor: true } } } },
       },
     });
+    revalidateTag("checklists");
     return created(template);
   } catch (error) {
     if ((error as Error).message === "UNAUTHORIZED") return unauthorized();
