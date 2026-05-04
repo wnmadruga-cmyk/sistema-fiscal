@@ -2,13 +2,13 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
-import { competenciaAtual } from "@/lib/competencia-utils";
+import { competenciaAtual, competenciaAnterior } from "@/lib/competencia-utils";
 import { CompetenciasPageContent } from "@/components/competencias/CompetenciasPageContent";
 import CompetenciasLoading from "./loading";
 
 export default function CompetenciasPage() {
   const searchParams = useSearchParams();
-  const competencia = searchParams.get("competencia") || competenciaAtual();
+  const competencia = searchParams.get("competencia") || competenciaAnterior(competenciaAtual());
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["competencias-page-data", competencia],

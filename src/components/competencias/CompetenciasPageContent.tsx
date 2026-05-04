@@ -14,7 +14,6 @@ import {
   ChevronRight,
   AlertTriangle,
   SlidersHorizontal,
-  Settings2,
   Download,
 } from "lucide-react";
 import { rowsToCsv } from "@/lib/csv";
@@ -142,6 +141,8 @@ export function CompetenciasPageContent({
   const router = useRouter();
   const [view, setView] = useState<"tabela" | "kanban">("tabela");
   const [search, setSearch] = useState("");
+  const [perPage, setPerPage] = useState(25);
+  const [currentPage, setCurrentPage] = useState(1);
   const [filtroEtapa, setFiltroEtapa] = useState<EtapaCard | "">("");
   const [filtroUrgente, setFiltroUrgente] = useState(false);
   const [filtroResponsavel, setFiltroResponsavel] = useState("");
@@ -154,6 +155,7 @@ export function CompetenciasPageContent({
   const [columns, setColumns] = useState<Set<ColumnKey>>(() => new Set(DEFAULT_COLUMNS));
 
   const cardsFiltrados = useMemo(() => {
+    setCurrentPage(1);
     return cards.filter((c) => {
       if (search) {
         const s = search.toLowerCase();
@@ -246,12 +248,15 @@ export function CompetenciasPageContent({
   function navCompetencia(dir: "prev" | "next") {
     const nova = dir === "prev" ? competenciaAnterior(competencia) : proxCompetencia(competencia);
     router.push(`/competencias?competencia=${nova}`);
-    router.refresh();
+    // router.push já muda a URL → React Query detecta nova queryKey → refetch automático
   }
 
   const urgentesCount = cards.filter((c) => c.urgente).length;
   const concluidosCount = cards.filter((c) => c.status === "CONCLUIDO").length;
   const advCount = Object.values(adv).filter((v) => v !== "").length;
+
+  const totalPages = Math.ceil(cardsFiltrados.length / perPage);
+  const cardsPaginados = cardsFiltrados.slice((currentPage - 1) * perPage, currentPage * perPage);
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)]">
@@ -437,11 +442,46 @@ export function CompetenciasPageContent({
 
       <div className="flex-1 overflow-auto">
         {view === "tabela" ? (
-          <TabelaView cards={cardsFiltrados} columns={columns} etiquetas={etiquetas} />
+          <TabelaView cards={cardsPaginados} columns={columns} etiquetas={etiquetas} />
         ) : (
           <KanbanView cards={cardsFiltrados} />
         )}
       </div>
+
+      {view === "tabela" && (
+        <div className="flex items-center justify-between px-6 py-2 border-t bg-background text-sm">
+          <p className="text-muted-foreground">
+            {cardsFiltrados.length === 0
+              ? "Nenhum card"
+              : `Exibindo ${(currentPage - 1) * perPage + 1}–${Math.min(currentPage * perPage, cardsFiltrados.length)} de ${cardsFiltrados.length} cards`}
+          </p>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5">
+              <span className="text-muted-foreground">Por página:</span>
+              <select
+                value={perPage}
+                onChange={(e) => { setPerPage(Number(e.target.value)); setCurrentPage(1); }}
+                className="h-7 rounded-md border border-input bg-transparent px-2 text-sm"
+              >
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setCurrentPage((p) => p - 1)} disabled={currentPage <= 1}>
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </Button>
+                <span className="px-2">{currentPage} / {totalPages}</span>
+                <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setCurrentPage((p) => p + 1)} disabled={currentPage >= totalPages}>
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

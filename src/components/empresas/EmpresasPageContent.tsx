@@ -15,25 +15,16 @@ import {
 import { formatDocument } from "@/lib/utils";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { UserAvatar } from "@/components/shared/UserAvatar";
-import type { Empresa, RegimeTributario, TipoAtividade, Prioridade, Grupo, Etiqueta } from "@prisma/client";
+import type { Empresa, Grupo } from "@prisma/client";
 import { toast } from "sonner";
 
 type EmpresaComRelacoes = Empresa & {
-  regimeTributario: RegimeTributario | null;
-  tipoAtividade: TipoAtividade | null;
-  prioridade: Prioridade | null;
-  respBusca: { id: string; nome: string; avatar: string | null } | null;
+  regimeTributario: { id: string; codigo: string; nome: string } | null;
   respElaboracao: { id: string; nome: string; avatar: string | null } | null;
   grupos: Array<{ grupo: Grupo }>;
-  etiquetas: Array<{ etiqueta: Etiqueta }>;
 };
 
-interface EmpresasPageContentProps {
-  grupos: Grupo[];
-  regimes: RegimeTributario[];
-}
-
-export function EmpresasPageContent({ grupos }: EmpresasPageContentProps) {
+export function EmpresasPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -66,6 +57,17 @@ export function EmpresasPageContent({ grupos }: EmpresasPageContentProps) {
     return () => clearTimeout(timer);
   }, [searchInput, searchParam, router, searchParams]);
 
+  const { data: gruposData } = useQuery({
+    queryKey: ["grupos"],
+    queryFn: async () => {
+      const res = await fetch("/api/grupos");
+      const json = await res.json();
+      return (json.data ?? []) as Grupo[];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const grupos = gruposData ?? [];
+
   const { data, isLoading, isPlaceholderData } = useQuery({
     queryKey: ["empresas-list", page, perPageRaw, searchParam, grupoFiltro],
     queryFn: async () => {
@@ -86,8 +88,8 @@ export function EmpresasPageContent({ grupos }: EmpresasPageContentProps) {
 
   const empresas = data?.empresas ?? [];
   const total = data?.total ?? 0;
-  const perPageNum = perPageRaw === "all" ? total : parseInt(perPageRaw) || 25;
-  const totalPages = perPageRaw === "all" ? 1 : Math.ceil(total / perPageNum);
+  const perPageNum = parseInt(perPageRaw) || 25;
+  const totalPages = Math.ceil(total / perPageNum);
   const startItem = total === 0 ? 0 : (page - 1) * perPageNum + 1;
   const endItem = Math.min(page * perPageNum, total);
 
@@ -312,8 +314,6 @@ export function EmpresasPageContent({ grupos }: EmpresasPageContentProps) {
             ? "Carregando..."
             : total === 0
             ? "Nenhuma empresa"
-            : perPageRaw === "all"
-            ? `Exibindo todas as ${total} empresa${total !== 1 ? "s" : ""}`
             : `Exibindo ${startItem}–${endItem} de ${total} empresa${total !== 1 ? "s" : ""}`}
         </p>
 
@@ -326,12 +326,12 @@ export function EmpresasPageContent({ grupos }: EmpresasPageContentProps) {
               className="h-8 rounded-md border border-input bg-transparent px-2 text-sm"
             >
               <option value="25">25</option>
+              <option value="50">50</option>
               <option value="100">100</option>
-              <option value="all">Todas</option>
             </select>
           </div>
 
-          {perPageRaw !== "all" && totalPages > 1 && (
+          {totalPages > 1 && (
             <div className="flex items-center gap-1">
               <Button
                 variant="outline"

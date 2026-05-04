@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { LABEL_ETAPA, ORDEM_ETAPAS } from "@/lib/competencia-utils";
@@ -30,22 +30,28 @@ const ETAPA_COLUMN_COLORS: Record<EtapaCard, string> = {
 };
 
 export function KanbanView({ cards }: KanbanViewProps) {
-  const router = useRouter();
+  const queryClient = useQueryClient();
   const [dragging, setDragging] = useState<string | null>(null);
+  // Optimistic overrides: cardId → etapaAtual
+  const [etapaOverrides, setEtapaOverrides] = useState<Map<string, EtapaCard>>(new Map());
 
   const cardsPorEtapa = useMemo(
     () =>
       ORDEM_ETAPAS.reduce(
         (acc, etapa) => {
-          acc[etapa] = cards.filter((c) => c.etapaAtual === etapa);
+          acc[etapa] = cards.filter((c) => (etapaOverrides.get(c.id) ?? c.etapaAtual) === etapa);
           return acc;
         },
         {} as Record<EtapaCard, CardItem[]>
       ),
-    [cards]
+    [cards, etapaOverrides]
   );
 
   async function handleDrop(cardId: string, novaEtapa: EtapaCard) {
+    const card = cards.find((c) => c.id === cardId);
+    const etapaAnterior = card?.etapaAtual ?? novaEtapa;
+    setEtapaOverrides((prev) => new Map(prev).set(cardId, novaEtapa)); // optimistic
+
     const res = await fetch(`/api/competencias/${cardId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -53,9 +59,10 @@ export function KanbanView({ cards }: KanbanViewProps) {
     });
 
     if (!res.ok) {
+      setEtapaOverrides((prev) => new Map(prev).set(cardId, etapaAnterior)); // revert
       toast.error("Erro ao mover card");
     } else {
-      router.refresh();
+      queryClient.invalidateQueries({ queryKey: ["competencias-page-data"] });
     }
   }
 

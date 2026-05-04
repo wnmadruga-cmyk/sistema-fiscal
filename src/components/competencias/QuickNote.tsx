@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { MessageSquarePlus, Loader2 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -16,10 +16,11 @@ export function QuickNote({
   count: number;
   disabled?: boolean;
 }) {
-  const router = useRouter();
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [texto, setTexto] = useState("");
   const [saving, setSaving] = useState(false);
+  const [localCount, setLocalCount] = useState(count);
 
   async function send() {
     if (!texto.trim()) return;
@@ -36,10 +37,13 @@ export function QuickNote({
       return;
     }
     toast.success("Nota adicionada");
+    setLocalCount((n) => n + 1); // optimistic badge
     setTexto("");
     setOpen(false);
-    router.refresh();
+    queryClient.invalidateQueries({ queryKey: ["competencias-page-data"] });
   }
+
+  const displayCount = localCount;
 
   return (
     <div className="relative">
@@ -50,9 +54,9 @@ export function QuickNote({
         title={disabled ? "Abrir card para comentar" : "Adicionar nota rápida"}
       >
         <MessageSquarePlus className="h-3.5 w-3.5" />
-        {count > 0 && (
+        {displayCount > 0 && (
           <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground rounded-full text-[9px] h-3.5 min-w-3.5 px-0.5 flex items-center justify-center font-medium">
-            {count > 9 ? "9+" : count}
+            {displayCount > 9 ? "9+" : displayCount}
           </span>
         )}
       </button>

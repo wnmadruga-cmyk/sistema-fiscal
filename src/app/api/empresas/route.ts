@@ -49,7 +49,7 @@ export async function GET(request: Request) {
     const grupoId = searchParams.get("grupoId") ?? "";
     const perPageRaw = searchParams.get("perPage") ?? "25";
     const page = Math.max(1, parseInt(searchParams.get("page") ?? "1") || 1);
-    const perPage = perPageRaw === "all" ? null : Math.max(10, Math.min(500, parseInt(perPageRaw) || 25));
+    const perPage = Math.max(10, Math.min(500, parseInt(perPageRaw) || 25));
 
     // Role-based base filter — mirrors the same logic in the server page component
     const isPrivileged = usuario.perfil === "ADMIN" || usuario.perfil === "GERENTE";
@@ -74,14 +74,11 @@ export async function GET(request: Request) {
       ],
     };
 
+    // Include only what the list table actually renders
     const include = {
-      regimeTributario: true,
-      tipoAtividade: true,
-      prioridade: true,
-      respBusca: { select: { id: true, nome: true, avatar: true } },
+      regimeTributario: { select: { id: true, codigo: true, nome: true } },
       respElaboracao: { select: { id: true, nome: true, avatar: true } },
       grupos: { include: { grupo: true } },
-      etiquetas: { include: { etiqueta: true } },
     } as const;
 
     const [total, empresas] = await Promise.all([
@@ -90,7 +87,8 @@ export async function GET(request: Request) {
         where,
         include,
         orderBy: { razaoSocial: "asc" },
-        ...(perPage ? { take: perPage, skip: (page - 1) * perPage } : {}),
+        take: perPage,
+        skip: (page - 1) * perPage,
       }),
     ]);
 

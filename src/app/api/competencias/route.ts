@@ -95,25 +95,68 @@ export async function POST(request: Request) {
     if (usuario.perfil !== "ADMIN" && usuario.perfil !== "GERENTE") return forbidden("Apenas admins e gerentes podem gerar competências");
     const body = await request.json();
 
+    const url = new URL(request.url);
+    const wantStream = url.searchParams.get("stream") === "true";
+
     // Accept legacy shape: { empresaId, competencias: [...] }
     const legacy = legacySchema.safeParse(body);
     if (legacy.success) {
-      return await gerar({
-        competencias: legacy.data.competencias,
-        empresaIds: [legacy.data.empresaId],
-        escritorioId: usuario.escritorioId,
-      });
+      try {
+        const result = await gerar({
+          competencias: legacy.data.competencias,
+          empresaIds: [legacy.data.empresaId],
+          escritorioId: usuario.escritorioId,
+        });
+        return created(result);
+      } catch (err) {
+        return badRequest(err instanceof Error ? err.message : "Erro ao gerar");
+      }
     }
 
     const parsed = gerarSchema.safeParse(body);
     if (!parsed.success) return badRequest("Dados inválidos", parsed.error.issues);
 
-    return await gerar({
+    const opts = {
       competencias: [parsed.data.competencia],
       empresaIds: parsed.data.empresaIds,
       prazosOverride: parsed.data.prazosOverride,
       prazosEtapasOverride: parsed.data.prazosEtapasOverride,
       escritorioId: usuario.escritorioId,
+    };
+
+    if (!wantStream) {
+      try {
+        return created(await gerar(opts));
+      } catch (err) {
+        return badRequest(err instanceof Error ? err.message : "Erro ao gerar");
+      }
+    }
+
+    // SSE streaming path
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        const send = (data: Record<string, unknown>) =>
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+        try {
+          const result = await gerar({
+            ...opts,
+            onProgress: (processed, total) => send({ processed, total }),
+          });
+          send({ done: true, count: result.count });
+        } catch (err) {
+          send({ error: err instanceof Error ? err.message : "Erro ao gerar", done: true });
+        }
+        controller.close();
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
     });
   } catch (error) {
     if ((error as Error).message === "UNAUTHORIZED") return unauthorized();
@@ -210,8 +253,9 @@ async function gerar(opts: {
   prazosOverride?: Record<string, string>;
   prazosEtapasOverride?: Record<string, string>;
   escritorioId: string;
-}) {
-  const { competencias, empresaIds, prazosOverride, prazosEtapasOverride, escritorioId } = opts;
+  onProgress?: (processed: number, total: number) => void;
+}): Promise<{ count: number; cards: { id: string; empresaId: string; competencia: string }[] }> {
+  const { competencias, empresaIds, prazosOverride, prazosEtapasOverride, escritorioId, onProgress } = opts;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = prisma as any;
@@ -241,38 +285,50 @@ async function gerar(opts: {
     }),
   ]);
 
-  if (empresas.length === 0) return badRequest("Nenhuma empresa encontrada");
+  if (empresas.length === 0) throw new Error("Nenhuma empresa encontrada");
 
   // Lookup rápido: etapa → config
   const etapaConfigMap = new Map(etapasConfig.map((c) => [c.etapa, c]));
 
   const criados: { id: string; empresaId: string; competencia: string }[] = [];
 
+  const BATCH_SIZE = 50;
+
   for (const competencia of competencias) {
     const { ano, mes } = parseCompetencia(competencia);
 
-    for (const empresa of empresas) {
-      const grupos = empresa.grupos.map((g) => g.grupo) as unknown as GrupoComEtapa[];
+    // Build all card payloads in memory (fast, no I/O)
+    type CardPayload = {
+      empresaId: string;
+      prazo: Date;
+      prioridadeId: string | null;
+      respElaboracaoId: string | null;
+      etapaInicial: EtapaCard;
+      etapasCreate: {
+        etapa: EtapaCard;
+        status: StatusEtapa;
+        concluidoEm?: Date;
+        responsavelId?: string;
+        prazo?: Date;
+      }[];
+    };
 
+    const payloads: CardPayload[] = empresas.map((empresa) => {
+      const grupos = empresa.grupos.map((g) => g.grupo) as unknown as GrupoComEtapa[];
       const grupoOverride = grupos.find((g: GrupoComEtapa) => g.sobrepoePrioridade && g.diasPrazo != null);
 
       let prazo: Date;
       if (grupoOverride?.diasPrazo != null) {
-        // Group override uses its own diasPrazo (days-based)
         prazo = calcPrazo(competencia, grupoOverride.diasPrazo);
       } else if (empresa.prioridadeId && prazosOverride?.[empresa.prioridadeId]) {
-        // Pre-calculated business-day-adjusted date from "Calcular Prazos"
         prazo = isoToDate(prazosOverride[empresa.prioridadeId]);
       } else {
         prazo = calcPrazo(competencia, empresa.prioridade?.diasPrazo ?? 0);
       }
 
       const docs = empresa.configDocumentos;
-
-      // Determinar etapa inicial para este card
       const etapaInicial = resolverEtapaInicial(empresa, grupos, regrasFluxo);
 
-      // Etapas filtradas para esta empresa (baseadas em config de docs + etapa inicial)
       const etapasOrdenadas = etapasParaCard({
         exigirConferencia: empresa.exigirConferencia || grupos.some((g) => (g as unknown as { exigirConferencia: boolean }).exigirConferencia),
         exigirImpressao: empresa.entregaImpressa,
@@ -282,7 +338,6 @@ async function gerar(opts: {
       });
 
       const etapaInicialIdx = etapasOrdenadas.indexOf(etapaInicial);
-
       const etapasCreate = etapasOrdenadas.map((etapa, idx) => {
         const cfg = etapaConfigMap.get(etapa);
         const concluida = idx < etapaInicialIdx;
@@ -301,23 +356,38 @@ async function gerar(opts: {
         };
       });
 
-      const card = await prisma.competenciaCard.upsert({
-        where: { empresaId_competencia: { empresaId: empresa.id, competencia } },
-        create: {
-          empresaId: empresa.id,
-          competencia,
-          mes,
-          ano,
-          prazo,
-          prioridadeId: empresa.prioridadeId,
-          responsavelId: empresa.respElaboracaoId,
-          etapaAtual: etapaInicial,
-          etapas: { create: etapasCreate },
-        },
-        update: { prazo },
-      });
+      return { empresaId: empresa.id, prazo, prioridadeId: empresa.prioridadeId, respElaboracaoId: empresa.respElaboracaoId, etapaInicial, etapasCreate };
+    });
 
-      criados.push({ id: card.id, empresaId: empresa.id, competencia });
+    console.log(`[gerar] competencia=${competencia} total_empresas=${payloads.length}`);
+
+    // Process in parallel batches to avoid sequential N×DB-roundtrip timeout
+    for (let i = 0; i < payloads.length; i += BATCH_SIZE) {
+      const batch = payloads.slice(i, i + BATCH_SIZE);
+      const results = await Promise.all(
+        batch.map((p) =>
+          prisma.competenciaCard.upsert({
+            where: { empresaId_competencia: { empresaId: p.empresaId, competencia } },
+            create: {
+              empresaId: p.empresaId,
+              competencia,
+              mes,
+              ano,
+              prazo: p.prazo,
+              prioridadeId: p.prioridadeId,
+              responsavelId: p.respElaboracaoId,
+              etapaAtual: p.etapaInicial,
+              etapas: { create: p.etapasCreate },
+            },
+            update: { prazo: p.prazo },
+          })
+        )
+      );
+      for (let j = 0; j < results.length; j++) {
+        criados.push({ id: results[j].id, empresaId: batch[j].empresaId, competencia });
+      }
+      console.log(`[gerar] competencia=${competencia} batch=${Math.floor(i / BATCH_SIZE) + 1} processadas=${Math.min(i + BATCH_SIZE, payloads.length)}/${payloads.length}`);
+      onProgress?.(criados.length, payloads.length);
     }
   }
 
@@ -340,7 +410,7 @@ async function gerar(opts: {
     });
   }
 
-  return created({ count: criados.length, cards: criados });
+  return { count: criados.length, cards: criados };
 }
 
 export async function DELETE(request: Request) {

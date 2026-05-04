@@ -19,13 +19,11 @@ import { createClient } from "@/lib/supabase/client";
 interface HeaderProps {
   usuarioNome?: string;
   usuarioAvatar?: string | null;
-  notificacoesNaoLidas?: number;
 }
 
 export function Header({
   usuarioNome = "Usuário",
   usuarioAvatar,
-  notificacoesNaoLidas = 0,
 }: HeaderProps) {
   const { theme, setTheme } = useTheme();
   const router = useRouter();
@@ -39,7 +37,7 @@ export function Header({
 
   return (
     <header className="fixed top-0 right-0 left-0 z-30 h-14 flex items-center justify-end gap-2 px-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <NotificationsBell initialUnread={notificacoesNaoLidas} />
+      <NotificationsBell />
 
       {/* Tema */}
       <Button

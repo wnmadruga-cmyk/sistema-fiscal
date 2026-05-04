@@ -31,12 +31,23 @@ const TIPO_DOT: Record<string, string> = {
   COMENTARIO_NOVO: "bg-violet-500",
 };
 
-export function NotificationsBell({ initialUnread }: { initialUnread: number }) {
+export function NotificationsBell() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Notif[]>([]);
   const [loading, setLoading] = useState(false);
-  const [unread, setUnread] = useState(initialUnread);
+  const [unread, setUnread] = useState(0);
+
+  const fetchUnread = useCallback(() => {
+    fetch("/api/notificacoes")
+      .then((r) => r.json())
+      .then((j) => {
+        const data: Notif[] = j.data ?? j ?? [];
+        setUnread(data.filter((n) => !n.lida).length);
+        if (open) setItems(data);
+      })
+      .catch(() => {});
+  }, [open]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -48,24 +59,16 @@ export function NotificationsBell({ initialUnread }: { initialUnread: number }) 
     setLoading(false);
   }, []);
 
+  // Busca o badge ao montar e a cada 60s
+  useEffect(() => {
+    fetchUnread();
+    const t = setInterval(fetchUnread, 60_000);
+    return () => clearInterval(t);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (open) load();
   }, [open, load]);
-
-  // Poll a cada 60s
-  useEffect(() => {
-    const t = setInterval(() => {
-      fetch("/api/notificacoes")
-        .then((r) => r.json())
-        .then((j) => {
-          const data: Notif[] = j.data ?? j ?? [];
-          setUnread(data.filter((n) => !n.lida).length);
-          if (open) setItems(data);
-        })
-        .catch(() => {});
-    }, 60_000);
-    return () => clearInterval(t);
-  }, [open]);
 
   async function marcarTodasLidas() {
     await fetch("/api/notificacoes", {

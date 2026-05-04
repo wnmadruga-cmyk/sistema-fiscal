@@ -47,6 +47,7 @@ export function GerarCompetenciaDialog({
   const [search, setSearch] = useState("");
   const [comp, setComp] = useState(competencia);
   const [saving, setSaving] = useState(false);
+  const [progress, setProgress] = useState<{ processed: number; total: number } | null>(null);
 
   // Support both controlled (from dropdown) and uncontrolled usage
   const isControlled = openProp !== undefined;
@@ -75,27 +76,68 @@ export function GerarCompetenciaDialog({
       return;
     }
     setSaving(true);
+    setProgress(null);
+
     const body: Record<string, unknown> = { competencia: comp };
     if (!todas) body.empresaIds = Array.from(selectedIds);
     if (prazosOverride) body.prazosOverride = prazosOverride;
     if (prazosEtapasOverride) body.prazosEtapasOverride = prazosEtapasOverride;
 
-    const res = await fetch("/api/competencias", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    setSaving(false);
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}));
-      toast.error(d.error ?? "Erro ao gerar");
-      return;
+    try {
+      const res = await fetch("/api/competencias?stream=true", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok || !res.body) {
+        const d = await res.json().catch(() => ({}));
+        toast.error(d.error ?? "Erro ao gerar");
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const data = JSON.parse(line.slice(6)) as {
+            done?: boolean;
+            count?: number;
+            processed?: number;
+            total?: number;
+            error?: string;
+          };
+          if (data.error) {
+            toast.error(data.error);
+            return;
+          }
+          if (data.done) {
+            const count = data.count ?? 0;
+            toast.success(`${count} card${count !== 1 ? "s" : ""} gerado${count !== 1 ? "s" : ""}`);
+            setOpen(false);
+            router.push(`/competencias?competencia=${comp}`);
+            router.refresh();
+            return;
+          }
+          if (data.processed !== undefined && data.total !== undefined) {
+            setProgress({ processed: data.processed, total: data.total });
+          }
+        }
+      }
+    } finally {
+      setSaving(false);
+      setProgress(null);
     }
-    const data = await res.json();
-    toast.success(`${data.count ?? ""} card${(data.count ?? 0) > 1 ? "s" : ""} gerado${(data.count ?? 0) > 1 ? "s" : ""}`);
-    setOpen(false);
-    router.push(`/competencias?competencia=${comp}`);
-    router.refresh();
   }
 
   return (
@@ -160,10 +202,28 @@ export function GerarCompetenciaDialog({
             )}
           </div>
 
+          {progress && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Gerando cards...</span>
+                <span className="font-mono font-medium tabular-nums">
+                  {progress.processed} / {progress.total}
+                </span>
+              </div>
+              <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-primary transition-all duration-300"
+                  style={{ width: `${Math.round((progress.processed / progress.total) * 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>Cancelar</Button>
             <Button onClick={gerar} disabled={saving}>
-              {saving && <Loader2 className="h-4 w-4 animate-spin mr-1" />} Gerar
+              {saving && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
+              {saving ? (progress ? "Gerando..." : "Iniciando...") : "Gerar"}
             </Button>
           </div>
         </div>

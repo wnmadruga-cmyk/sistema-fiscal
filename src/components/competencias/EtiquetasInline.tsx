@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { Tag, Plus } from "lucide-react";
 import { toast } from "sonner";
 import type { Etiqueta } from "./CompetenciasPageContent";
@@ -17,16 +17,21 @@ export function EtiquetasInline({
   todas: Etiqueta[];
   disabled?: boolean;
 }) {
-  const router = useRouter();
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const currentIds = new Set(current.map((c) => c.etiqueta.id));
+  // Optimistic local override — null means "use prop"
+  const [localIds, setLocalIds] = useState<Set<string> | null>(null);
+
+  const serverIds = new Set(current.map((c) => c.etiqueta.id));
+  const currentIds = localIds ?? serverIds;
 
   async function toggle(id: string) {
     if (disabled) return;
-    setSaving(true);
     const next = new Set(currentIds);
     if (next.has(id)) next.delete(id); else next.add(id);
+    setLocalIds(next); // optimistic
+    setSaving(true);
     const res = await fetch(`/api/competencias/${cardId}/etiquetas`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -34,21 +39,26 @@ export function EtiquetasInline({
     });
     setSaving(false);
     if (!res.ok) {
+      setLocalIds(serverIds); // revert
       toast.error("Erro ao salvar etiquetas");
       return;
     }
-    router.refresh();
+    queryClient.invalidateQueries({ queryKey: ["competencias-page-data"] });
   }
+
+  const exibidas = localIds
+    ? todas.filter((t) => localIds.has(t.id))
+    : current.map((c) => c.etiqueta);
 
   return (
     <div className="relative inline-flex items-center gap-1 flex-wrap">
-      {current.map((e) => (
+      {exibidas.map((etiqueta) => (
         <span
-          key={e.etiqueta.id}
+          key={etiqueta.id}
           className="text-[10px] px-1.5 py-0.5 rounded-full whitespace-nowrap"
-          style={{ backgroundColor: `${e.etiqueta.cor}20`, color: e.etiqueta.cor }}
+          style={{ backgroundColor: `${etiqueta.cor}20`, color: etiqueta.cor }}
         >
-          {e.etiqueta.nome}
+          {etiqueta.nome}
         </span>
       ))}
       {!disabled && (
@@ -57,7 +67,7 @@ export function EtiquetasInline({
           className="inline-flex items-center justify-center h-5 w-5 rounded border border-dashed text-muted-foreground hover:bg-muted"
           title="Editar etiquetas"
         >
-          {current.length === 0 ? <Tag className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+          {exibidas.length === 0 ? <Tag className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
         </button>
       )}
       {open && (
