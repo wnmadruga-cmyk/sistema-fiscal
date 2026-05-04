@@ -1,4 +1,3 @@
-import { revalidateTag } from "next/cache";
 import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ok, noContent, serverError, unauthorized, badRequest, notFound } from "@/lib/api-response";
@@ -45,20 +44,19 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
     const { empresaIds, ...data } = parsed.data;
 
-    const grupo = await prisma.$transaction(async (tx) => {
-      const updated = Object.keys(data).length > 0
-        ? await tx.grupo.update({ where: { id }, data })
-        : await tx.grupo.findUniqueOrThrow({ where: { id } });
+    await prisma.$transaction(async (tx) => {
+      if (Object.keys(data).length > 0) {
+        await tx.grupo.update({ where: { id }, data });
+      }
 
-      // Se o grupo foi inativado, remove todos os vínculos com empresas
       if (data.ativo === false) {
         await tx.empresaGrupo.deleteMany({ where: { grupoId: id } });
       } else if (empresaIds !== undefined) {
-        const empresas = await tx.empresa.findMany({
+        const empresasValidas = await tx.empresa.findMany({
           where: { id: { in: empresaIds }, escritorioId: usuario.escritorioId },
           select: { id: true },
         });
-        const valid = empresas.map((e) => e.id);
+        const valid = empresasValidas.map((e) => e.id);
         await tx.empresaGrupo.deleteMany({ where: { grupoId: id } });
         if (valid.length > 0) {
           await tx.empresaGrupo.createMany({
@@ -66,10 +64,13 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
           });
         }
       }
-      return updated;
     });
 
-    revalidateTag("grupos");
+    const grupo = await prisma.grupo.findUniqueOrThrow({
+      where: { id },
+      include: { _count: { select: { empresas: true } }, empresas: { select: { empresaId: true } } },
+    });
+
     return ok(grupo);
   } catch (error) {
     if ((error as Error).message === "UNAUTHORIZED") return unauthorized();
@@ -92,7 +93,6 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
       prisma.grupo.update({ where: { id }, data: { ativo: false } }),
     ]);
 
-    revalidateTag("grupos");
     return noContent();
   } catch (error) {
     if ((error as Error).message === "UNAUTHORIZED") return unauthorized();

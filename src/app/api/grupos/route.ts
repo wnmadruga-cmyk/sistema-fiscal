@@ -1,4 +1,3 @@
-import { revalidateTag } from "next/cache";
 import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ok, created, serverError, unauthorized, badRequest } from "@/lib/api-response";
@@ -55,23 +54,27 @@ export async function POST(request: Request) {
 
     const { empresaIds, ...data } = parsed.data;
 
-    const grupo = await prisma.$transaction(async (tx) => {
+    const { id: grupoId } = await prisma.$transaction(async (tx) => {
       const g = await tx.grupo.create({ data: { ...data, escritorioId: usuario.escritorioId } });
       if (empresaIds && empresaIds.length > 0) {
-        const empresas = await tx.empresa.findMany({
+        const empresasValidas = await tx.empresa.findMany({
           where: { id: { in: empresaIds }, escritorioId: usuario.escritorioId },
           select: { id: true },
         });
-        if (empresas.length > 0) {
+        if (empresasValidas.length > 0) {
           await tx.empresaGrupo.createMany({
-            data: empresas.map((e) => ({ grupoId: g.id, empresaId: e.id })),
+            data: empresasValidas.map((e) => ({ grupoId: g.id, empresaId: e.id })),
           });
         }
       }
       return g;
     });
 
-    revalidateTag("grupos");
+    const grupo = await prisma.grupo.findUniqueOrThrow({
+      where: { id: grupoId },
+      include: { _count: { select: { empresas: true } }, empresas: { select: { empresaId: true } } },
+    });
+
     return created(grupo);
   } catch (error) {
     if ((error as Error).message === "UNAUTHORIZED") return unauthorized();

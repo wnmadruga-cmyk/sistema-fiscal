@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -65,7 +64,7 @@ interface Empresa { id: string; nome: string; codigoInterno?: string | null }
 const empty = { nome: "", descricao: "", cor: "#3b82f6", diasPrazo: null as number | null, sobrepoePrioridade: false, exigirAbrirCard: false, exigirConferencia: false, etapaInicial: null as EtapaCard | null, empresaIds: [] as string[] };
 
 export function GruposManager({ initial, empresas }: { initial: Grupo[]; empresas: Empresa[] }) {
-  const router = useRouter();
+  const [grupos, setGrupos] = useState<Grupo[]>(initial);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Grupo | null>(null);
   const [form, setForm] = useState(empty);
@@ -115,6 +114,23 @@ export function GruposManager({ initial, empresas }: { initial: Grupo[]; empresa
     }));
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function normalize(raw: any): Grupo {
+    return {
+      id: raw.id,
+      nome: raw.nome,
+      descricao: raw.descricao ?? null,
+      cor: raw.cor ?? null,
+      diasPrazo: raw.diasPrazo ?? null,
+      sobrepoePrioridade: raw.sobrepoePrioridade ?? false,
+      exigirAbrirCard: raw.exigirAbrirCard ?? false,
+      exigirConferencia: raw.exigirConferencia ?? false,
+      etapaInicial: raw.etapaInicial ?? null,
+      empresasCount: raw._count?.empresas ?? raw.empresasCount ?? 0,
+      empresaIds: raw.empresas?.map((e: { empresaId: string }) => e.empresaId) ?? raw.empresaIds ?? [],
+    };
+  }
+
   async function save() {
     setSaving(true);
     const url = editing ? `/api/grupos/${editing.id}` : "/api/grupos";
@@ -129,17 +145,23 @@ export function GruposManager({ initial, empresas }: { initial: Grupo[]; empresa
       toast.error(d.error ?? "Erro ao salvar");
       return;
     }
+    const raw = await res.json();
+    const saved = normalize(raw.data ?? raw);
+    if (editing) {
+      setGrupos((prev) => prev.map((g) => g.id === saved.id ? saved : g));
+    } else {
+      setGrupos((prev) => [...prev, saved].sort((a, b) => a.nome.localeCompare(b.nome)));
+    }
     toast.success("Salvo!");
     setOpen(false);
-    router.refresh();
   }
 
   async function remove(id: string) {
     if (!confirm("Remover este grupo?")) return;
     const res = await fetch(`/api/grupos/${id}`, { method: "DELETE" });
     if (!res.ok) { toast.error("Erro ao remover"); return; }
+    setGrupos((prev) => prev.filter((g) => g.id !== id));
     toast.success("Removido");
-    router.refresh();
   }
 
   const filtered = empresas.filter((e) => e.nome.toLowerCase().includes(filter.toLowerCase()));
@@ -150,10 +172,10 @@ export function GruposManager({ initial, empresas }: { initial: Grupo[]; empresa
         <Button onClick={openNew}><Plus className="h-4 w-4 mr-1" /> Novo Grupo</Button>
       </div>
       <div className="grid gap-3">
-        {initial.length === 0 && (
+        {grupos.length === 0 && (
           <Card><CardContent className="p-6 text-center text-muted-foreground">Nenhum grupo cadastrado</CardContent></Card>
         )}
-        {initial.map((g) => (
+        {grupos.map((g) => (
           <Card key={g.id}>
             <CardContent className="p-4 flex items-center justify-between gap-4">
               <div className="flex items-center gap-3 flex-1">

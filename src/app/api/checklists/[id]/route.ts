@@ -1,4 +1,3 @@
-import { revalidateTag } from "next/cache";
 import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ok, serverError, unauthorized, badRequest, notFound } from "@/lib/api-response";
@@ -94,7 +93,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       });
     });
 
-    revalidateTag("checklists");
     return ok(updated);
   } catch (error) {
     if ((error as Error).message === "UNAUTHORIZED") return unauthorized();
@@ -120,7 +118,6 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     if (!current) return notFound("Checklist");
 
     await prisma.checklistTemplate.update({ where: { id }, data: { ativo: false } });
-    revalidateTag("checklists");
     return ok({ ok: true });
   } catch (error) {
     if ((error as Error).message === "UNAUTHORIZED") return unauthorized();
