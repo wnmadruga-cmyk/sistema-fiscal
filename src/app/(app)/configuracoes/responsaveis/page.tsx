@@ -9,7 +9,7 @@ export default async function ResponsaveisPage() {
   const { supabaseUser, usuario } = await getAuthUser();
   if (!supabaseUser || !usuario) redirect("/login");
 
-  const [empresas, usuarios] = await Promise.all([
+  const [empresas, usuarios, regimes, tiposAtividade] = await Promise.all([
     prisma.empresa.findMany({
       where: { escritorioId: usuario.escritorioId, ativa: true },
       select: {
@@ -20,11 +20,23 @@ export default async function ResponsaveisPage() {
         respBuscaId: true,
         respElaboracaoId: true,
         respConferenciaId: true,
+        regimeTributarioId: true,
+        tipoAtividadeId: true,
       },
       orderBy: { razaoSocial: "asc" },
     }),
     prisma.usuario.findMany({
       where: { escritorioId: usuario.escritorioId, ativo: true },
+      select: { id: true, nome: true },
+      orderBy: { nome: "asc" },
+    }),
+    prisma.regimeTributario.findMany({
+      where: { ativo: true },
+      select: { id: true, nome: true, codigo: true },
+      orderBy: { nome: "asc" },
+    }),
+    prisma.tipoAtividade.findMany({
+      where: { ativo: true },
       select: { id: true, nome: true },
       orderBy: { nome: "asc" },
     }),
@@ -38,7 +50,7 @@ export default async function ResponsaveisPage() {
           Selecione empresas e transfira o responsável em lote, de forma permanente ou para uma competência específica.
         </p>
       </div>
-      <TransferirResponsaveisManager empresas={empresas} usuarios={usuarios} />
+      <TransferirResponsaveisManager empresas={empresas} usuarios={usuarios} regimes={regimes} tiposAtividade={tiposAtividade} />
     </div>
   );
 }

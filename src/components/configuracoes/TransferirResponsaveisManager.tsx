@@ -25,6 +25,8 @@ interface Empresa {
   respBuscaId: string | null;
   respElaboracaoId: string | null;
   respConferenciaId: string | null;
+  regimeTributarioId: string | null;
+  tipoAtividadeId: string | null;
 }
 
 interface Usuario {
@@ -32,9 +34,22 @@ interface Usuario {
   nome: string;
 }
 
+interface Regime {
+  id: string;
+  nome: string;
+  codigo: string;
+}
+
+interface TipoAtividade {
+  id: string;
+  nome: string;
+}
+
 interface Props {
   empresas: Empresa[];
   usuarios: Usuario[];
+  regimes: Regime[];
+  tiposAtividade: TipoAtividade[];
 }
 
 type Tipo = "busca" | "elaboracao" | "conferencia";
@@ -45,12 +60,14 @@ const TIPO_LABEL: Record<Tipo, string> = {
   conferencia: "Resp. Conferência",
 };
 
-export function TransferirResponsaveisManager({ empresas, usuarios }: Props) {
+export function TransferirResponsaveisManager({ empresas, usuarios, regimes, tiposAtividade }: Props) {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [tipo, setTipo] = useState<Tipo>("elaboracao");
   const [filtroResponsavelId, setFiltroResponsavelId] = useState<string>("__todos__");
+  const [filtroRegimeId, setFiltroRegimeId] = useState<string>("__todos__");
+  const [filtroTipoAtividadeId, setFiltroTipoAtividadeId] = useState<string>("__todos__");
   const [novoId, setNovoId] = useState<string>("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -75,9 +92,17 @@ export function TransferirResponsaveisManager({ empresas, usuarios }: Props) {
         filtroResponsavelId === "__todos__" ||
         (filtroResponsavelId === "__nenhum__" ? !currentId : currentId === filtroResponsavelId);
 
-      return matchSearch && matchResp;
+      const matchRegime =
+        filtroRegimeId === "__todos__" ||
+        (filtroRegimeId === "__nenhum__" ? !e.regimeTributarioId : e.regimeTributarioId === filtroRegimeId);
+
+      const matchTipo =
+        filtroTipoAtividadeId === "__todos__" ||
+        (filtroTipoAtividadeId === "__nenhum__" ? !e.tipoAtividadeId : e.tipoAtividadeId === filtroTipoAtividadeId);
+
+      return matchSearch && matchResp && matchRegime && matchTipo;
     });
-  }, [search, empresas, tipo, filtroResponsavelId]);
+  }, [search, empresas, tipo, filtroResponsavelId, filtroRegimeId, filtroTipoAtividadeId]);
 
   function toggleAll() {
     if (selected.size === filtered.length) {
@@ -169,6 +194,42 @@ export function TransferirResponsaveisManager({ empresas, usuarios }: Props) {
               </SelectItem>
               {usuarios.map((u) => (
                 <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1 flex-1 min-w-48">
+          <Label>Regime tributário</Label>
+          <Select value={filtroRegimeId} onValueChange={(v) => { setFiltroRegimeId(v); setSelected(new Set()); }}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__todos__">Todos</SelectItem>
+              <SelectItem value="__nenhum__">
+                <span className="text-muted-foreground">Sem regime</span>
+              </SelectItem>
+              {regimes.map((r) => (
+                <SelectItem key={r.id} value={r.id}>{r.codigo} — {r.nome}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1 flex-1 min-w-48">
+          <Label>Tipo de atividade</Label>
+          <Select value={filtroTipoAtividadeId} onValueChange={(v) => { setFiltroTipoAtividadeId(v); setSelected(new Set()); }}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__todos__">Todos</SelectItem>
+              <SelectItem value="__nenhum__">
+                <span className="text-muted-foreground">Sem tipo</span>
+              </SelectItem>
+              {tiposAtividade.map((t) => (
+                <SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>
               ))}
             </SelectContent>
           </Select>
