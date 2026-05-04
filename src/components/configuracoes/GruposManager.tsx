@@ -93,8 +93,8 @@ export function GruposManager({ initial, empresas }: { initial: Grupo[]; empresa
 
   function applyImport() {
     if (!importResult) return;
-    const merged = [...new Set([...form.empresaIds, ...importResult.matched])];
-    setForm((f) => ({ ...f, empresaIds: merged }));
+    const matched = importResult.matched;
+    setForm((f) => ({ ...f, empresaIds: [...new Set([...f.empresaIds, ...matched])] }));
     setImportText("");
     setImportTab("lista");
   }
