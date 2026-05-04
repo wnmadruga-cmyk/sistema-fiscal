@@ -6,8 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { LABEL_ETAPA } from "@/lib/competencia-utils";
 import { formatDate } from "@/lib/utils";
-import { AlertTriangle, XCircle, Eye } from "lucide-react";
-import type { CardItem, Etiqueta } from "../CompetenciasPageContent";
+import { AlertTriangle, XCircle, Eye, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import type { CardItem, Etiqueta, SortKey } from "../CompetenciasPageContent";
 import type { ColumnKey } from "../ColumnConfigPopover";
 import { EtapaCard } from "@prisma/client";
 import { EtiquetasInline } from "../EtiquetasInline";
@@ -34,16 +34,40 @@ interface TabelaViewProps {
   cards: CardItem[];
   columns: Set<ColumnKey>;
   etiquetas: Etiqueta[];
+  sortKey: SortKey | null;
+  sortDir: "asc" | "desc";
+  onSort: (key: SortKey) => void;
 }
 
 function isInlineBlocked(c: CardItem) {
   return c.empresa.exigirAbrirCard || c.empresa.grupos.some((g) => g.grupo.exigirAbrirCard);
 }
 
-export function TabelaView({ cards, columns, etiquetas }: TabelaViewProps) {
+function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey | null; sortDir: "asc" | "desc" }) {
+  if (sortKey !== col) return <ArrowUpDown className="h-3 w-3 opacity-40" />;
+  return sortDir === "asc"
+    ? <ArrowUp className="h-3 w-3" />
+    : <ArrowDown className="h-3 w-3" />;
+}
+
+export function TabelaView({ cards, columns, etiquetas, sortKey, sortDir, onSort }: TabelaViewProps) {
   const [infoCard, setInfoCard] = useState<CardItem | null>(null);
 
   const has = (k: ColumnKey) => columns.has(k);
+
+  function SortTh({ col, children }: { col: SortKey; children: React.ReactNode }) {
+    return (
+      <th
+        className="text-left px-3 py-2.5 font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground"
+        onClick={() => onSort(col)}
+      >
+        <span className="inline-flex items-center gap-1">
+          {children}
+          <SortIcon col={col} sortKey={sortKey} sortDir={sortDir} />
+        </span>
+      </th>
+    );
+  }
 
   return (
     <>
@@ -51,21 +75,21 @@ export function TabelaView({ cards, columns, etiquetas }: TabelaViewProps) {
         <thead className="sticky top-0 z-10 bg-muted/80 backdrop-blur border-b">
           <tr>
             <th className="text-left px-3 py-2.5 font-medium text-muted-foreground w-8"></th>
-            {has("empresa") && <th className="text-left px-3 py-2.5 font-medium text-muted-foreground">Empresa</th>}
+            {has("empresa") && <SortTh col="empresa">Empresa</SortTh>}
             {has("etiquetas") && <th className="text-left px-3 py-2.5 font-medium text-muted-foreground">Etiquetas</th>}
-            {has("regime") && <th className="text-left px-3 py-2.5 font-medium text-muted-foreground">Regime</th>}
-            {has("tipoAtividade") && <th className="text-left px-3 py-2.5 font-medium text-muted-foreground">Atividade</th>}
-            {has("prioridade") && <th className="text-left px-3 py-2.5 font-medium text-muted-foreground">Prioridade</th>}
-            {has("filial") && <th className="text-left px-3 py-2.5 font-medium text-muted-foreground">Escritório</th>}
+            {has("regime") && <SortTh col="regime">Regime</SortTh>}
+            {has("tipoAtividade") && <SortTh col="tipoAtividade">Atividade</SortTh>}
+            {has("prioridade") && <SortTh col="prioridade">Prioridade</SortTh>}
+            {has("filial") && <SortTh col="filial">Escritório</SortTh>}
             {has("grupos") && <th className="text-left px-3 py-2.5 font-medium text-muted-foreground">Grupos</th>}
-            {has("respElaboracao") && <th className="text-left px-3 py-2.5 font-medium text-muted-foreground">Elab.</th>}
-            {has("respConferencia") && <th className="text-left px-3 py-2.5 font-medium text-muted-foreground">Conf.</th>}
+            {has("respElaboracao") && <SortTh col="respElaboracao">Elab.</SortTh>}
+            {has("respConferencia") && <SortTh col="respConferencia">Conf.</SortTh>}
             {has("configEntrega") && <th className="text-left px-3 py-2.5 font-medium text-muted-foreground">Entrega</th>}
-            {has("etapa") && <th className="text-left px-3 py-2.5 font-medium text-muted-foreground">Etapa</th>}
+            {has("etapa") && <SortTh col="etapa">Etapa</SortTh>}
             {has("etapasInline") && <th className="text-left px-3 py-2.5 font-medium text-muted-foreground">Etapas</th>}
-            {has("progresso") && <th className="text-left px-3 py-2.5 font-medium text-muted-foreground">Progresso</th>}
-            {has("prazo") && <th className="text-left px-3 py-2.5 font-medium text-muted-foreground">Prazo</th>}
-            {has("responsavel") && <th className="text-left px-3 py-2.5 font-medium text-muted-foreground">Resp.</th>}
+            {has("progresso") && <SortTh col="progresso">Progresso</SortTh>}
+            {has("prazo") && <SortTh col="prazo">Prazo</SortTh>}
+            {has("responsavel") && <SortTh col="responsavel">Resp.</SortTh>}
             {has("acoes") && <th className="px-3 py-2.5"></th>}
           </tr>
         </thead>

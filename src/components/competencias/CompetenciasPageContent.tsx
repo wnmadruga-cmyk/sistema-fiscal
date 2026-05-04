@@ -22,8 +22,32 @@ import { TabelaView } from "./views/TabelaView";
 import { KanbanView } from "./views/KanbanView";
 import { GerenciarDropdown } from "./GerenciarDropdown";
 import { ColumnConfigPopover, type ColumnKey, DEFAULT_COLUMNS } from "./ColumnConfigPopover";
-import { competenciaLabel, proxCompetencia, competenciaAnterior } from "@/lib/competencia-utils";
+import { competenciaLabel, proxCompetencia, competenciaAnterior, ORDEM_ETAPAS } from "@/lib/competencia-utils";
 import type { EtapaCard, StatusCard, SituacaoFolha } from "@prisma/client";
+
+export type SortKey =
+  | "empresa" | "regime" | "tipoAtividade" | "prioridade" | "filial"
+  | "etapa" | "progresso" | "prazo" | "responsavel" | "respElaboracao" | "respConferencia";
+
+function getSortValue(c: CardItem, key: SortKey): string | number {
+  switch (key) {
+    case "empresa":       return c.empresa.razaoSocial.toLowerCase();
+    case "regime":        return c.empresa.regimeTributario?.codigo?.toLowerCase() ?? "\xff";
+    case "tipoAtividade": return c.empresa.tipoAtividade?.nome?.toLowerCase() ?? "\xff";
+    case "prioridade":    return c.empresa.prioridade?.nome?.toLowerCase() ?? "\xff";
+    case "filial":        return c.empresa.filial?.nome?.toLowerCase() ?? "\xff";
+    case "etapa":         return ORDEM_ETAPAS.indexOf(c.etapaAtual);
+    case "progresso": {
+      const total = c.etapas.length;
+      const done  = c.etapas.filter((e) => e.status === "CONCLUIDA").length;
+      return total > 0 ? done / total : 0;
+    }
+    case "prazo":         return c.prazo ? new Date(c.prazo).getTime() : Infinity;
+    case "responsavel":   return c.responsavel?.nome?.toLowerCase() ?? "\xff";
+    case "respElaboracao":  return c.empresa.respElaboracao?.nome?.toLowerCase() ?? "\xff";
+    case "respConferencia": return c.empresa.respConferencia?.nome?.toLowerCase() ?? "\xff";
+  }
+}
 
 export type CardItem = {
   id: string;
@@ -153,6 +177,18 @@ export function CompetenciasPageContent({
   const [advOpen, setAdvOpen] = useState(false);
   const [adv, setAdv] = useState<AdvFilters>(advEmpty);
   const [columns, setColumns] = useState<Set<ColumnKey>>(() => new Set(DEFAULT_COLUMNS));
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  function handleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+    setCurrentPage(1);
+  }
 
   const cardsFiltrados = useMemo(() => {
     setCurrentPage(1);
@@ -255,8 +291,21 @@ export function CompetenciasPageContent({
   const concluidosCount = cards.filter((c) => c.status === "CONCLUIDO").length;
   const advCount = Object.values(adv).filter((v) => v !== "").length;
 
-  const totalPages = Math.ceil(cardsFiltrados.length / perPage);
-  const cardsPaginados = cardsFiltrados.slice((currentPage - 1) * perPage, currentPage * perPage);
+  const cardsSorted = useMemo(() => {
+    if (!sortKey) return cardsFiltrados;
+    return [...cardsFiltrados].sort((a, b) => {
+      const va = getSortValue(a, sortKey);
+      const vb = getSortValue(b, sortKey);
+      const cmp =
+        typeof va === "number" && typeof vb === "number"
+          ? va - vb
+          : String(va).localeCompare(String(vb), "pt-BR");
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [cardsFiltrados, sortKey, sortDir]);
+
+  const totalPages = Math.ceil(cardsSorted.length / perPage);
+  const cardsPaginados = cardsSorted.slice((currentPage - 1) * perPage, currentPage * perPage);
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)]">
@@ -442,7 +491,7 @@ export function CompetenciasPageContent({
 
       <div className="flex-1 overflow-auto">
         {view === "tabela" ? (
-          <TabelaView cards={cardsPaginados} columns={columns} etiquetas={etiquetas} />
+          <TabelaView cards={cardsPaginados} columns={columns} etiquetas={etiquetas} sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
         ) : (
           <KanbanView cards={cardsFiltrados} />
         )}
