@@ -46,7 +46,6 @@ async function getDashboardGestor(usuarioId: string, escritorioId: string, compe
   const [compYear, compMonth] = competencia.split("-").map(Number);
   const totalWorkingDays = workingDaysInMonth(compYear, compMonth);
   const elapsedWorkingDays = workingDaysElapsed(compYear, compMonth, hoje);
-  const remainingWorkingDays = totalWorkingDays - elapsedWorkingDays;
 
   const [
     totalCards, concluidosCount, atrasadosCount, urgentesCount, meusPendentes,
@@ -114,8 +113,8 @@ async function getDashboardGestor(usuarioId: string, escritorioId: string, compe
       where: { empresa: { escritorioId, respElaboracaoId: { not: null } }, competencia },
       select: {
         status: true,
-        etapaAtual: true,
         empresa: { select: { respElaboracao: { select: { id: true, nome: true, avatar: true } } } },
+        prioridade: { select: { id: true, nome: true, cor: true, diasPrazo: true } },
       },
     }),
   ]);
@@ -123,7 +122,7 @@ async function getDashboardGestor(usuarioId: string, escritorioId: string, compe
   const prioridadeIds = prioridadesRaw.map((p) => p.prioridadeId).filter((id): id is string => id !== null);
   const prioridades = await prisma.prioridade.findMany({
     where: { id: { in: prioridadeIds } },
-    select: { id: true, nome: true, cor: true },
+    select: { id: true, nome: true, cor: true, diasPrazo: true },
   });
 
   const workloadMap = new Map<string, { responsavel: { id: string; nome: string; avatar: string | null }; total: number; urgentes: number }>();
@@ -150,34 +149,64 @@ async function getDashboardGestor(usuarioId: string, escritorioId: string, compe
     .sort((a, b) => b.total - a.total);
 
   // produtividade por respElaboracao
+  type PrioInfo = { id: string; nome: string; cor: string; diasPrazo: number };
   type ProdEntry = {
     responsavel: { id: string; nome: string; avatar: string | null };
     total: number;
     concluidas: number;
-    etapas: Map<string, number>;
+    porPrioridade: Map<string, { info: PrioInfo; total: number; concluidas: number }>;
   };
   const prodMap = new Map<string, ProdEntry>();
+  const priosVistas = new Map<string, PrioInfo>();
+
   for (const c of prodRaw) {
     const resp = c.empresa.respElaboracao;
     if (!resp) continue;
-    const entry = prodMap.get(resp.id) ?? { responsavel: resp, total: 0, concluidas: 0, etapas: new Map() };
+    const entry = prodMap.get(resp.id) ?? { responsavel: resp, total: 0, concluidas: 0, porPrioridade: new Map() };
     entry.total++;
-    if (c.status === "CONCLUIDO") {
-      entry.concluidas++;
-    } else {
-      entry.etapas.set(c.etapaAtual, (entry.etapas.get(c.etapaAtual) ?? 0) + 1);
+    if (c.status === "CONCLUIDO") entry.concluidas++;
+
+    if (c.prioridade) {
+      const prio = c.prioridade as PrioInfo;
+      priosVistas.set(prio.id, prio);
+      const pp = entry.porPrioridade.get(prio.id) ?? { info: prio, total: 0, concluidas: 0 };
+      pp.total++;
+      if (c.status === "CONCLUIDO") pp.concluidas++;
+      entry.porPrioridade.set(prio.id, pp);
     }
+
     prodMap.set(resp.id, entry);
   }
-  const safeElapsed = Math.max(elapsedWorkingDays, 1);
+
+  // Deadline = diasPrazo da prioridade com maior prazo (mais baixa)
+  const maxDiasPrazo = Array.from(priosVistas.values()).reduce((m, p) => Math.max(m, p.diasPrazo ?? 0), 0) || totalWorkingDays;
+  // Dá 1 dia útil de tolerância antes de começar a avaliar ritmo
+  const effectiveElapsed = Math.max(0, elapsedWorkingDays - 1);
+
   const produtividade = Array.from(prodMap.values())
-    .map(({ responsavel, total, concluidas, etapas }) => {
+    .map(({ responsavel, total, concluidas, porPrioridade }) => {
       const pendentes = total - concluidas;
-      const media = parseFloat((concluidas / safeElapsed).toFixed(2));
-      const ideal = parseFloat((total / Math.max(totalWorkingDays, 1)).toFixed(2));
-      const ratio = total > 0 ? concluidas / total : 1;
+      const media = effectiveElapsed > 0 ? parseFloat((concluidas / effectiveElapsed).toFixed(2)) : 0;
+      const ideal = parseFloat((total / maxDiasPrazo).toFixed(2));
+
+      // Ritmo esperado ponderado pelas prioridades de cada empresa
+      let expectedByNow = 0;
+      if (effectiveElapsed > 0) {
+        for (const [, pp] of porPrioridade) {
+          const dias = pp.info.diasPrazo > 0 ? pp.info.diasPrazo : maxDiasPrazo;
+          const fracaoDecorrida = Math.min(effectiveElapsed / dias, 1);
+          expectedByNow += pp.total * fracaoDecorrida;
+        }
+      }
+
+      const ratio = expectedByNow > 0 ? concluidas / expectedByNow : 1;
       const status: "otimo" | "bom" | "regular" | "ruim" =
-        ratio >= 1 ? "otimo" : ratio >= 0.95 ? "bom" : ratio >= 0.8 ? "regular" : "ruim";
+        effectiveElapsed === 0 ? "otimo"
+        : ratio >= 1 ? "otimo"
+        : ratio >= 0.85 ? "bom"
+        : ratio >= 0.65 ? "regular"
+        : "ruim";
+
       return {
         responsavel,
         total,
@@ -186,7 +215,12 @@ async function getDashboardGestor(usuarioId: string, escritorioId: string, compe
         media,
         ideal,
         status,
-        porEtapa: Array.from(etapas.entries()).map(([etapa, count]) => ({ etapa, count })),
+        porPrioridade: Array.from(porPrioridade.values())
+          .map(({ info, total, concluidas }) => ({
+            id: info.id, nome: info.nome, cor: info.cor, diasPrazo: info.diasPrazo,
+            total, concluidas, pendentes: total - concluidas,
+          }))
+          .sort((a, b) => a.diasPrazo - b.diasPrazo), // menor diasPrazo = maior prioridade = primeiro
       };
     })
     .sort((a, b) => b.total - a.total);
@@ -207,7 +241,7 @@ async function getDashboardGestor(usuarioId: string, escritorioId: string, compe
     notificacoesCount,
     filiaisStats,
     produtividade,
-    diasUteis: { total: totalWorkingDays, elapsed: elapsedWorkingDays, restantes: remainingWorkingDays },
+    diasUteis: { total: maxDiasPrazo, elapsed: elapsedWorkingDays, restantes: Math.max(0, maxDiasPrazo - elapsedWorkingDays) },
   };
 }
 

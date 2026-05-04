@@ -44,6 +44,8 @@ type CardResumo = {
   prioridade: { nome: string; cor: string } | null;
 };
 
+type PrioStat = { id: string; nome: string; cor: string; diasPrazo: number; total: number; concluidas: number; pendentes: number };
+
 type ProdItem = {
   responsavel: { id: string; nome: string; avatar: string | null };
   total: number;
@@ -52,7 +54,7 @@ type ProdItem = {
   media: number;
   ideal: number;
   status: "otimo" | "bom" | "regular" | "ruim";
-  porEtapa: Array<{ etapa: string; count: number }>;
+  porPrioridade: PrioStat[];
 };
 
 type FilialStat = { nome: string; total: number; concluidas: number; pendentes: number; pct: number };
@@ -143,6 +145,75 @@ export function DashboardContent({ usuarioNome, usuarioPerfil, competencia, gest
 }
 
 // ─── Visão do Gestor ──────────────────────────────────────────────────────────
+
+function PorPrioridadeView({ produtividade }: { produtividade: ProdItem[] }) {
+  // Coleta prioridades únicas na ordem correta (menor diasPrazo = maior prioridade = primeiro)
+  const priosMap = new Map<string, PrioStat>();
+  for (const p of produtividade) {
+    for (const pp of p.porPrioridade) {
+      if (!priosMap.has(pp.id)) priosMap.set(pp.id, pp);
+    }
+  }
+  const prios = Array.from(priosMap.values()).sort((a, b) => a.diasPrazo - b.diasPrazo);
+
+  if (prios.length === 0) {
+    return <p className="text-sm text-muted-foreground text-center py-4">Sem prioridades cadastradas</p>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {prios.map((prio) => {
+        const pessoas = produtividade
+          .map((p) => ({ responsavel: p.responsavel, stat: p.porPrioridade.find((pp) => pp.id === prio.id) }))
+          .filter((x): x is { responsavel: ProdItem["responsavel"]; stat: PrioStat } => !!x.stat);
+
+        return (
+          <div key={prio.id}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: prio.cor }} />
+              <span className="text-sm font-semibold">{prio.nome}</span>
+              <span className="text-xs text-muted-foreground">({prio.diasPrazo} dias úteis)</span>
+            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-muted-foreground border-b">
+                  <th className="text-left pb-1.5 font-medium pl-4">Responsável</th>
+                  <th className="text-right pb-1.5 font-medium">Total</th>
+                  <th className="text-right pb-1.5 font-medium">Conc.</th>
+                  <th className="text-right pb-1.5 font-medium">Pend.</th>
+                  <th className="text-right pb-1.5 font-medium pr-2">%</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {pessoas.map(({ responsavel, stat }) => {
+                  const pct = stat.total > 0 ? Math.round((stat.concluidas / stat.total) * 100) : 0;
+                  return (
+                    <tr key={responsavel.id} className="hover:bg-muted/20">
+                      <td className="py-1.5 pl-4">
+                        <div className="flex items-center gap-2">
+                          <UserAvatar nome={responsavel.nome} avatar={responsavel.avatar} size="sm" />
+                          <span>{responsavel.nome.split(" ")[0]}</span>
+                        </div>
+                      </td>
+                      <td className="py-1.5 text-right">{stat.total}</td>
+                      <td className="py-1.5 text-right text-emerald-600 font-medium">{stat.concluidas}</td>
+                      <td className="py-1.5 text-right text-amber-600">{stat.pendentes}</td>
+                      <td className="py-1.5 text-right pr-2">
+                        <span className={`text-xs font-medium ${pct === 100 ? "text-emerald-600" : pct >= 80 ? "text-blue-600" : "text-muted-foreground"}`}>
+                          {pct}%
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function GestorView({ data, competencia }: { data: GestorData; competencia: string }) {
   const [prazosOpen, setPrazosOpen] = useState(false);
@@ -504,7 +575,7 @@ function GestorView({ data, competencia }: { data: GestorData; competencia: stri
                     className={`px-2 py-0.5 rounded text-xs transition-colors ${prodView === "etapas" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
                   >
                     <LayoutList className="h-3 w-3 inline mr-1" />
-                    Por etapa
+                    Por prioridade
                   </button>
                 </div>
               </div>
@@ -557,54 +628,7 @@ function GestorView({ data, competencia }: { data: GestorData; competencia: stri
                 </table>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-xs text-muted-foreground uppercase tracking-wide border-b">
-                      <th className="text-left pb-2 font-medium">Nome</th>
-                      <th className="text-left pb-2 font-medium">Etapa</th>
-                      <th className="text-right pb-2 font-medium">Cards</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {data.produtividade.flatMap(({ responsavel, concluidas, porEtapa }) => {
-                      const rows = [];
-                      if (concluidas > 0) {
-                        rows.push(
-                          <tr key={`${responsavel.id}-CONCLUIDO`} className="hover:bg-muted/20">
-                            <td className="py-1.5 pr-4">
-                              <div className="flex items-center gap-2">
-                                <UserAvatar nome={responsavel.nome} avatar={responsavel.avatar} size="sm" />
-                                <span className="font-medium">{responsavel.nome.split(" ")[0]}</span>
-                              </div>
-                            </td>
-                            <td className="py-1.5">
-                              <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
-                                Concluído
-                              </span>
-                            </td>
-                            <td className="py-1.5 text-right font-medium text-emerald-600">{concluidas}</td>
-                          </tr>
-                        );
-                      }
-                      porEtapa
-                        .sort((a, b) => b.count - a.count)
-                        .forEach(({ etapa, count }) => {
-                          rows.push(
-                            <tr key={`${responsavel.id}-${etapa}`} className="hover:bg-muted/20">
-                              <td className="py-1.5 pr-4 text-muted-foreground text-xs pl-7">—</td>
-                              <td className="py-1.5 text-xs text-muted-foreground">
-                                {LABEL_ETAPA[etapa as import("@prisma/client").EtapaCard] ?? etapa}
-                              </td>
-                              <td className="py-1.5 text-right">{count}</td>
-                            </tr>
-                          );
-                        });
-                      return rows;
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <PorPrioridadeView produtividade={data.produtividade} />
             )}
           </CardContent>
         </Card>
