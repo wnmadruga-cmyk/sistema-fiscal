@@ -29,7 +29,9 @@ import {
   Building2,
   ChevronRight,
   ChevronDown,
+  LayoutList,
 } from "lucide-react";
+import { UserAvatar } from "@/components/shared/UserAvatar";
 
 // ─── tipos ───────────────────────────────────────────────────────────────────
 
@@ -42,9 +44,23 @@ type CardResumo = {
   prioridade: { nome: string; cor: string } | null;
 };
 
+type ProdItem = {
+  responsavel: { id: string; nome: string; avatar: string | null };
+  total: number;
+  concluidas: number;
+  pendentes: number;
+  media: number;
+  ideal: number;
+  status: "otimo" | "bom" | "regular" | "ruim";
+  porEtapa: Array<{ etapa: string; count: number }>;
+};
+
+type FilialStat = { nome: string; total: number; concluidas: number; pendentes: number; pct: number };
+
 type GestorData = {
   totalCards: number;
   concluidosCount: number;
+  pendentesCount: number;
   atrasadosCount: number;
   urgentesCount: number;
   meusPendentes: number;
@@ -56,6 +72,9 @@ type GestorData = {
   notaMedia: number | null;
   notaMediaCount: number;
   notificacoesCount: number;
+  filiaisStats: FilialStat[];
+  produtividade: ProdItem[];
+  diasUteis: { total: number; elapsed: number; restantes: number };
 };
 
 type OperacionalData = {
@@ -127,6 +146,7 @@ export function DashboardContent({ usuarioNome, usuarioPerfil, competencia, gest
 
 function GestorView({ data, competencia }: { data: GestorData; competencia: string }) {
   const [prazosOpen, setPrazosOpen] = useState(false);
+  const [prodView, setProdView] = useState<"produtividade" | "etapas">("produtividade");
   const pct = data.totalCards > 0 ? Math.round((data.concluidosCount / data.totalCards) * 100) : 0;
   const emAndamento = data.totalCards - data.concluidosCount;
 
@@ -138,8 +158,6 @@ function GestorView({ data, competencia }: { data: GestorData; competencia: stri
     })
     .filter((e): e is { etapa: EtapaCard; total: number; nome: string } => e !== null && e.total > 0);
 
-  const maxWorkload = Math.max(...data.workload.map((w) => w.total), 1);
-
   return (
     <div className="space-y-6">
       {/* ── Linha 1: Métricas globais ── */}
@@ -148,6 +166,7 @@ function GestorView({ data, competencia }: { data: GestorData; competencia: stri
           label="Total de Empresas"
           value={data.totalCards}
           sub={`${data.concluidosCount} concluídas`}
+          sub2={`${data.pendentesCount} pendentes`}
           icon={Building2}
           color="blue"
           href={`/competencias?competencia=${competencia}`}
@@ -177,6 +196,43 @@ function GestorView({ data, competencia }: { data: GestorData; competencia: stri
           href={`/competencias?competencia=${competencia}`}
         />
       </div>
+
+      {/* ── Filiais ── */}
+      {data.filiaisStats.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-muted-foreground" />
+              Status por Escritório / Filial
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              {data.filiaisStats.map((f) => (
+                <div key={f.nome} className="p-3 rounded-lg border bg-muted/20 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium truncate">{f.nome}</span>
+                    <span className={`text-xs font-bold shrink-0 ${f.pct === 100 ? "text-emerald-600" : f.pct >= 80 ? "text-blue-600" : "text-amber-600"}`}>
+                      {f.pct}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-muted rounded-full h-1.5">
+                    <div
+                      className={`h-1.5 rounded-full transition-all ${f.pct === 100 ? "bg-emerald-500" : f.pct >= 80 ? "bg-blue-500" : "bg-amber-500"}`}
+                      style={{ width: `${f.pct}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>{f.total} total</span>
+                    <span className="text-emerald-600 font-medium">{f.concluidas} conc.</span>
+                    <span className="text-amber-600">{f.pendentes} pend.</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Linha 2: Progresso + Minha fila ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -415,40 +471,139 @@ function GestorView({ data, competencia }: { data: GestorData; competencia: stri
         </Card>
       </div>
 
-      {/* ── Linha 4: Workload + Prazos próximos ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Workload */}
+      {/* ── Linha 4: Produtividade + Prazos próximos ── */}
+      <div className="grid grid-cols-1 gap-4">
+        {/* Produtividade da Equipe */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Users className="h-4 w-4 text-muted-foreground" />
-              Carga de Trabalho por Responsável
-            </CardTitle>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                Produtividade da Equipe
+              </CardTitle>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
+                    Dias úteis: <span className="font-bold text-foreground ml-0.5">{data.diasUteis.total}</span>
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
+                    Restantes: <span className="font-bold text-foreground ml-0.5">{data.diasUteis.restantes}</span>
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 rounded-md border p-0.5">
+                  <button
+                    onClick={() => setProdView("produtividade")}
+                    className={`px-2 py-0.5 rounded text-xs transition-colors ${prodView === "produtividade" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    Produtividade
+                  </button>
+                  <button
+                    onClick={() => setProdView("etapas")}
+                    className={`px-2 py-0.5 rounded text-xs transition-colors ${prodView === "etapas" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    <LayoutList className="h-3 w-3 inline mr-1" />
+                    Por etapa
+                  </button>
+                </div>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
-            {data.workload.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">Nenhum card atribuído</p>
+            {data.produtividade.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Nenhum responsável de elaboração atribuído</p>
+            ) : prodView === "produtividade" ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-xs text-muted-foreground uppercase tracking-wide border-b">
+                      <th className="text-left pb-2 font-medium">Nome</th>
+                      <th className="text-right pb-2 font-medium">Total</th>
+                      <th className="text-right pb-2 font-medium">Conc.</th>
+                      <th className="text-right pb-2 font-medium">Pend.</th>
+                      <th className="text-right pb-2 font-medium">Média/dia</th>
+                      <th className="text-right pb-2 font-medium">Ideal/dia</th>
+                      <th className="text-right pb-2 font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {data.produtividade.map(({ responsavel, total, concluidas, pendentes, media, ideal, status }) => (
+                      <tr key={responsavel.id} className="hover:bg-muted/20">
+                        <td className="py-2 pr-4">
+                          <div className="flex items-center gap-2">
+                            <UserAvatar nome={responsavel.nome} avatar={responsavel.avatar} size="sm" />
+                            <span className="font-medium">{responsavel.nome.split(" ")[0]}</span>
+                          </div>
+                        </td>
+                        <td className="py-2 text-right font-medium">{total}</td>
+                        <td className="py-2 text-right text-emerald-600 font-medium">{concluidas}</td>
+                        <td className="py-2 text-right text-amber-600">{pendentes}</td>
+                        <td className="py-2 text-right text-muted-foreground">{media}</td>
+                        <td className="py-2 text-right text-muted-foreground">{ideal}</td>
+                        <td className="py-2 text-right">
+                          <span className={`font-semibold ${
+                            status === "otimo" ? "text-emerald-600" :
+                            status === "bom" ? "text-blue-600" :
+                            status === "regular" ? "text-amber-600" :
+                            "text-red-600"
+                          }`}>
+                            {status === "otimo" ? "Ótimo" : status === "bom" ? "Bom" : status === "regular" ? "Regular" : "Ruim"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             ) : (
-              <div className="space-y-2.5">
-                {data.workload.map(({ responsavel, total, urgentes }) => (
-                  <div key={responsavel.id} className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm truncate max-w-[160px]">{responsavel.nome}</span>
-                      <div className="flex items-center gap-2 shrink-0">
-                        {urgentes > 0 && (
-                          <span className="text-xs text-red-600 font-medium">{urgentes} urg.</span>
-                        )}
-                        <span className="text-xs font-bold">{total}</span>
-                      </div>
-                    </div>
-                    <div className="w-full bg-muted rounded-full h-1.5">
-                      <div
-                        className="h-1.5 rounded-full bg-blue-500"
-                        style={{ width: `${(total / maxWorkload) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-xs text-muted-foreground uppercase tracking-wide border-b">
+                      <th className="text-left pb-2 font-medium">Nome</th>
+                      <th className="text-left pb-2 font-medium">Etapa</th>
+                      <th className="text-right pb-2 font-medium">Cards</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {data.produtividade.flatMap(({ responsavel, concluidas, porEtapa }) => {
+                      const rows = [];
+                      if (concluidas > 0) {
+                        rows.push(
+                          <tr key={`${responsavel.id}-CONCLUIDO`} className="hover:bg-muted/20">
+                            <td className="py-1.5 pr-4">
+                              <div className="flex items-center gap-2">
+                                <UserAvatar nome={responsavel.nome} avatar={responsavel.avatar} size="sm" />
+                                <span className="font-medium">{responsavel.nome.split(" ")[0]}</span>
+                              </div>
+                            </td>
+                            <td className="py-1.5">
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                                Concluído
+                              </span>
+                            </td>
+                            <td className="py-1.5 text-right font-medium text-emerald-600">{concluidas}</td>
+                          </tr>
+                        );
+                      }
+                      porEtapa
+                        .sort((a, b) => b.count - a.count)
+                        .forEach(({ etapa, count }) => {
+                          rows.push(
+                            <tr key={`${responsavel.id}-${etapa}`} className="hover:bg-muted/20">
+                              <td className="py-1.5 pr-4 text-muted-foreground text-xs pl-7">—</td>
+                              <td className="py-1.5 text-xs text-muted-foreground">
+                                {LABEL_ETAPA[etapa as import("@prisma/client").EtapaCard] ?? etapa}
+                              </td>
+                              <td className="py-1.5 text-right">{count}</td>
+                            </tr>
+                          );
+                        });
+                      return rows;
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
           </CardContent>
@@ -747,6 +902,7 @@ function StatCard({
   label,
   value,
   sub,
+  sub2,
   icon: Icon,
   href,
   color,
@@ -754,6 +910,7 @@ function StatCard({
   label: string;
   value: number | string;
   sub?: string;
+  sub2?: string;
   icon: React.ElementType;
   href: string;
   color: "blue" | "red" | "amber" | "purple" | "green";
@@ -774,7 +931,12 @@ function StatCard({
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground leading-tight">{label}</p>
               <p className="text-3xl font-bold mt-1 leading-none">{value}</p>
-              {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
+              {(sub || sub2) && (
+                <div className="flex items-center gap-3 mt-1">
+                  {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
+                  {sub2 && <p className="text-xs text-muted-foreground">{sub2}</p>}
+                </div>
+              )}
             </div>
             <div className={`p-2.5 rounded-xl shrink-0 ${colors[color]}`}>
               <Icon className="h-5 w-5" />

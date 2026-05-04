@@ -4,6 +4,29 @@ import { ok, serverError, unauthorized } from "@/lib/api-response";
 import { competenciaAtual } from "@/lib/competencia-utils";
 import { addDays } from "date-fns";
 
+function workingDaysInMonth(year: number, month: number): number {
+  const days = new Date(year, month, 0).getDate();
+  let count = 0;
+  for (let d = 1; d <= days; d++) {
+    const wd = new Date(year, month - 1, d).getDay();
+    if (wd !== 0 && wd !== 6) count++;
+  }
+  return count;
+}
+
+function workingDaysElapsed(year: number, month: number, today: Date): number {
+  const endOfMonth = new Date(year, month, 0);
+  const cutoff = today <= endOfMonth ? today : endOfMonth;
+  let count = 0;
+  for (let d = 1; ; d++) {
+    const date = new Date(year, month - 1, d);
+    if (date > cutoff) break;
+    const wd = date.getDay();
+    if (wd !== 0 && wd !== 6) count++;
+  }
+  return count;
+}
+
 async function getCompetenciaAtiva(escritorioId: string): Promise<string> {
   const card = await prisma.competenciaCard.findFirst({
     where: {
@@ -20,10 +43,16 @@ async function getDashboardGestor(usuarioId: string, escritorioId: string, compe
   const hoje = new Date();
   const em2dias = addDays(hoje, 2);
 
+  const [compYear, compMonth] = competencia.split("-").map(Number);
+  const totalWorkingDays = workingDaysInMonth(compYear, compMonth);
+  const elapsedWorkingDays = workingDaysElapsed(compYear, compMonth, hoje);
+  const remainingWorkingDays = totalWorkingDays - elapsedWorkingDays;
+
   const [
     totalCards, concluidosCount, atrasadosCount, urgentesCount, meusPendentes,
     resumoEtapasRaw, prioridadesRaw, prazosProximos, workloadRaw,
     qualidadeAberta, notaAggregate, notificacoesCount,
+    filialRaw, prodRaw,
   ] = await Promise.all([
     prisma.competenciaCard.count({ where: { empresa: { escritorioId }, competencia } }),
     prisma.competenciaCard.count({ where: { empresa: { escritorioId }, competencia, status: "CONCLUIDO" } }),
@@ -72,6 +101,23 @@ async function getDashboardGestor(usuarioId: string, escritorioId: string, compe
       _count: { notaQualidade: true },
     }),
     prisma.notificacao.count({ where: { usuarioId, lida: false } }),
+    // filial stats
+    prisma.competenciaCard.findMany({
+      where: { empresa: { escritorioId }, competencia },
+      select: {
+        status: true,
+        empresa: { select: { filial: { select: { id: true, nome: true } } } },
+      },
+    }),
+    // produtividade por respElaboracao
+    prisma.competenciaCard.findMany({
+      where: { empresa: { escritorioId, respElaboracaoId: { not: null } }, competencia },
+      select: {
+        status: true,
+        etapaAtual: true,
+        empresa: { select: { respElaboracao: { select: { id: true, nome: true, avatar: true } } } },
+      },
+    }),
   ]);
 
   const prioridadeIds = prioridadesRaw.map((p) => p.prioridadeId).filter((id): id is string => id !== null);
@@ -89,8 +135,65 @@ async function getDashboardGestor(usuarioId: string, escritorioId: string, compe
     workloadMap.set(c.responsavelId, entry);
   }
 
+  // filial stats
+  const filialMap = new Map<string, { nome: string; total: number; concluidas: number }>();
+  for (const c of filialRaw) {
+    const fil = c.empresa.filial;
+    if (!fil) continue;
+    const entry = filialMap.get(fil.id) ?? { nome: fil.nome, total: 0, concluidas: 0 };
+    entry.total++;
+    if (c.status === "CONCLUIDO") entry.concluidas++;
+    filialMap.set(fil.id, entry);
+  }
+  const filiaisStats = Array.from(filialMap.values())
+    .map((f) => ({ ...f, pendentes: f.total - f.concluidas, pct: f.total > 0 ? Math.round((f.concluidas / f.total) * 100) : 0 }))
+    .sort((a, b) => b.total - a.total);
+
+  // produtividade por respElaboracao
+  type ProdEntry = {
+    responsavel: { id: string; nome: string; avatar: string | null };
+    total: number;
+    concluidas: number;
+    etapas: Map<string, number>;
+  };
+  const prodMap = new Map<string, ProdEntry>();
+  for (const c of prodRaw) {
+    const resp = c.empresa.respElaboracao;
+    if (!resp) continue;
+    const entry = prodMap.get(resp.id) ?? { responsavel: resp, total: 0, concluidas: 0, etapas: new Map() };
+    entry.total++;
+    if (c.status === "CONCLUIDO") {
+      entry.concluidas++;
+    } else {
+      entry.etapas.set(c.etapaAtual, (entry.etapas.get(c.etapaAtual) ?? 0) + 1);
+    }
+    prodMap.set(resp.id, entry);
+  }
+  const safeElapsed = Math.max(elapsedWorkingDays, 1);
+  const produtividade = Array.from(prodMap.values())
+    .map(({ responsavel, total, concluidas, etapas }) => {
+      const pendentes = total - concluidas;
+      const media = parseFloat((concluidas / safeElapsed).toFixed(2));
+      const ideal = parseFloat((total / Math.max(totalWorkingDays, 1)).toFixed(2));
+      const ratio = total > 0 ? concluidas / total : 1;
+      const status: "otimo" | "bom" | "regular" | "ruim" =
+        ratio >= 1 ? "otimo" : ratio >= 0.95 ? "bom" : ratio >= 0.8 ? "regular" : "ruim";
+      return {
+        responsavel,
+        total,
+        concluidas,
+        pendentes,
+        media,
+        ideal,
+        status,
+        porEtapa: Array.from(etapas.entries()).map(([etapa, count]) => ({ etapa, count })),
+      };
+    })
+    .sort((a, b) => b.total - a.total);
+
   return {
     totalCards, concluidosCount, atrasadosCount, urgentesCount, meusPendentes,
+    pendentesCount: totalCards - concluidosCount,
     resumoEtapas: resumoEtapasRaw.map((r) => ({ etapa: r.etapaAtual, total: r._count.etapaAtual })),
     prioridadesDistribuicao: prioridadesRaw.map((r) => ({
       prioridade: prioridades.find((p) => p.id === r.prioridadeId) ?? { id: "", nome: "Sem prioridade", cor: "#94a3b8" },
@@ -102,6 +205,9 @@ async function getDashboardGestor(usuarioId: string, escritorioId: string, compe
     notaMedia: notaAggregate._avg.notaQualidade ? Number(Number(notaAggregate._avg.notaQualidade).toFixed(1)) : null,
     notaMediaCount: notaAggregate._count.notaQualidade,
     notificacoesCount,
+    filiaisStats,
+    produtividade,
+    diasUteis: { total: totalWorkingDays, elapsed: elapsedWorkingDays, restantes: remainingWorkingDays },
   };
 }
 
