@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { BookOpen, Loader2, FileText, Video } from "lucide-react";
+import { BookOpen, Loader2, FileText, Video, Trash2 } from "lucide-react";
 
 interface EtapaItem {
   id: string | null;
@@ -38,6 +38,7 @@ export function EtapasManager({ etapas: initial, usuarios }: { etapas: EtapaItem
   const router = useRouter();
   const [etapas, setEtapas] = useState(initial);
   const [savingIdx, setSavingIdx] = useState<number | null>(null);
+  const [deletingIdx, setDeletingIdx] = useState<number | null>(null);
 
   function update(idx: number, patch: Partial<EtapaItem>) {
     setEtapas((prev) => prev.map((e, i) => (i === idx ? { ...e, ...patch } : e)));
@@ -70,6 +71,21 @@ export function EtapasManager({ etapas: initial, usuarios }: { etapas: EtapaItem
     const { data } = await res.json();
     update(idx, { id: data.id });
     toast.success("Etapa salva!");
+    router.refresh();
+  }
+
+  async function deleteEtapa(idx: number) {
+    const e = etapas[idx];
+    if (!e.id) return;
+    if (!confirm(`Restaurar "${e.nome}" para o padrão do sistema?`)) return;
+    setDeletingIdx(idx);
+    const res = await fetch(`/api/etapas-config/${e.id}`, { method: "DELETE" });
+    setDeletingIdx(null);
+    if (!res.ok) {
+      toast.error("Erro ao excluir");
+      return;
+    }
+    toast.success("Etapa restaurada para o padrão");
     router.refresh();
   }
 
@@ -135,6 +151,17 @@ export function EtapasManager({ etapas: initial, usuarios }: { etapas: EtapaItem
               </Dialog>
               <Button onClick={() => save(idx)} disabled={savingIdx === idx} size="sm">
                 {savingIdx === idx ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => deleteEtapa(idx)}
+                disabled={!e.id || deletingIdx === idx}
+                title={e.id ? "Restaurar padrão" : "Sem customização salva"}
+              >
+                {deletingIdx === idx
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : <Trash2 className="h-4 w-4 text-destructive" />}
               </Button>
             </div>
 
