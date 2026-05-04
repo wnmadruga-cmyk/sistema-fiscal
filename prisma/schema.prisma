@@ -33,6 +33,7 @@ model Escritorio {
 
   usuarioConferenciaPadrao Usuario? @relation("EscritorioConferenciaPadrao", fields: [usuarioConferenciaPadraoId], references: [id])
   regrasFluxo              RegraFluxoInicial[]
+  configEmailNotificacao   ConfigEmailNotificacao?
 
   @@map("escritorios")
 }
@@ -883,4 +884,20 @@ model CardEvento {
 
   @@index([cardId, createdAt])
   @@map("card_eventos")
+}
+
+model ConfigEmailNotificacao {
+  id             String   @id @default(cuid())
+  escritorioId   String   @unique
+  ativo          Boolean  @default(false)
+  horaEnvio      String   @default("08:00")
+  destinatarios  String[] @default([])
+  assunto        String   @default("Relatório Diário — Fluxo Fiscal")
+  ultimoEnvio    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  escritorio Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+
+  @@map("config_email_notificacao")
 }

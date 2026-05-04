@@ -12,6 +12,7 @@ import {
   Briefcase,
   GitBranch,
   ArrowLeftRight,
+  Mail,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -93,6 +94,12 @@ const configSections = [
     description: "Reatribuir responsáveis de elaboração, busca ou conferência em lote",
     href: "/configuracoes/responsaveis",
     icon: ArrowLeftRight,
+  },
+  {
+    title: "Relatório por E-mail",
+    description: "Envio automático diário do andamento da competência",
+    href: "/configuracoes/email-notificacao",
+    icon: Mail,
   },
 ];
 
