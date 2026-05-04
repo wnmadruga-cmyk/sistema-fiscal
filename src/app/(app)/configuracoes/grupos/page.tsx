@@ -1,37 +1,30 @@
 export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
-import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getAuthUser } from "@/lib/auth";
 import { GruposManager } from "@/components/configuracoes/GruposManager";
-
-const getGruposData = unstable_cache(
-  async (escritorioId: string) =>
-    Promise.all([
-      prisma.grupo.findMany({
-        where: { escritorioId, ativo: true },
-        include: {
-          _count: { select: { empresas: true } },
-          empresas: { select: { empresaId: true } },
-        },
-        orderBy: { nome: "asc" },
-      }),
-      prisma.empresa.findMany({
-        where: { escritorioId, ativa: true },
-        select: { id: true, razaoSocial: true, nomeFantasia: true, codigoInterno: true },
-        orderBy: { razaoSocial: "asc" },
-      }),
-    ]),
-  ["config-grupos"],
-  { revalidate: 300, tags: ["grupos"] }
-);
 
 export default async function GruposPage() {
   const { supabaseUser, usuario } = await getAuthUser();
   if (!supabaseUser || !usuario) redirect("/login");
 
-  const [grupos, empresas] = await getGruposData(usuario.escritorioId);
+  const [grupos, empresas] = await Promise.all([
+    prisma.grupo.findMany({
+      where: { escritorioId: usuario.escritorioId, ativo: true },
+      include: {
+        _count: { select: { empresas: true } },
+        empresas: { select: { empresaId: true } },
+      },
+      orderBy: { nome: "asc" },
+    }),
+    prisma.empresa.findMany({
+      where: { escritorioId: usuario.escritorioId, ativa: true },
+      select: { id: true, razaoSocial: true, nomeFantasia: true, codigoInterno: true },
+      orderBy: { razaoSocial: "asc" },
+    }),
+  ]);
+
   const empresasLookup = empresas.map((e) => ({ id: e.id, nome: e.nomeFantasia ?? e.razaoSocial, codigoInterno: e.codigoInterno }));
 
   return (
