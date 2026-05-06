@@ -13,7 +13,7 @@ export default function CompetenciasLoading() {
         {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="flex-shrink-0 w-64 space-y-3">
             <div className="h-8 bg-muted rounded-md animate-pulse" />
-            {Array.from({ length: Math.floor(Math.random() * 3) + 1 }).map((_, j) => (
+            {Array.from({ length: 3 }).map((_, j) => (
               <div key={j} className="h-24 bg-muted rounded-xl animate-pulse" />
             ))}
           </div>
