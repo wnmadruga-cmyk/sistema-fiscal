@@ -220,7 +220,7 @@ export function TabelaView({ cards, columns, etiquetas, sortKey, sortDir, onSort
                   {has("etapasInline") && (
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-1 flex-wrap">
-                        <InlineEtapas card={card} disabled={blocked || card.semMovimento} />
+                        <InlineEtapas card={card} disabled={blocked} />
                         <SmToggle cardId={card.id} semMovimento={card.semMovimento} disabled={blocked} />
                       </div>
                     </td>
