@@ -144,6 +144,7 @@ model Usuario {
   empresasBusca       Empresa[] @relation("EmpresaRespBusca")
   empresasElaboracao  Empresa[] @relation("EmpresaRespElaboracao")
   empresasConferencia Empresa[] @relation("EmpresaRespConferencia")
+  empresasEntrega     Empresa[] @relation("EmpresaRespEntrega")
 
   cardsResponsavel   CompetenciaCard[]  @relation("CardResponsavel")
   cardsConferencia   CompetenciaCard[]  @relation("CardConferenciaResp")
@@ -181,6 +182,7 @@ model Empresa {
   respBuscaId             String?
   respElaboracaoId        String?
   respConferenciaId       String?
+  respEntregaId           String?
 
   codigoInterno           String?
   razaoSocial             String
@@ -220,6 +222,7 @@ model Empresa {
   respBusca        Usuario?          @relation("EmpresaRespBusca", fields: [respBuscaId], references: [id])
   respElaboracao   Usuario?          @relation("EmpresaRespElaboracao", fields: [respElaboracaoId], references: [id])
   respConferencia  Usuario?          @relation("EmpresaRespConferencia", fields: [respConferenciaId], references: [id])
+  respEntrega      Usuario?          @relation("EmpresaRespEntrega", fields: [respEntregaId], references: [id])
 
   grupos           EmpresaGrupo[]
   etiquetas        EmpresaEtiqueta[]

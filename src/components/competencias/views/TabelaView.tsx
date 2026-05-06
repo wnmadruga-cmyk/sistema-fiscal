@@ -84,6 +84,7 @@ export function TabelaView({ cards, columns, etiquetas, sortKey, sortDir, onSort
             {has("grupos") && <th className="text-left px-3 py-2.5 font-medium text-muted-foreground">Grupos</th>}
             {has("respElaboracao") && <SortTh col="respElaboracao">Elab.</SortTh>}
             {has("respConferencia") && <SortTh col="respConferencia">Conf.</SortTh>}
+            {has("respEntrega") && <SortTh col="respEntrega">Entrega</SortTh>}
             {has("configEntrega") && <th className="text-left px-3 py-2.5 font-medium text-muted-foreground">Entrega</th>}
             {has("etapa") && <SortTh col="etapa">Etapa</SortTh>}
             {has("etapasInline") && <th className="text-left px-3 py-2.5 font-medium text-muted-foreground">Etapas</th>}
@@ -196,6 +197,10 @@ export function TabelaView({ cards, columns, etiquetas, sortKey, sortDir, onSort
 
                   {has("respConferencia") && (
                     <td className="px-3 py-2 text-xs">{card.empresa.respConferencia?.nome.split(" ")[0] ?? "—"}</td>
+                  )}
+
+                  {has("respEntrega") && (
+                    <td className="px-3 py-2 text-xs">{card.empresa.respEntrega?.nome.split(" ")[0] ?? "—"}</td>
                   )}
 
                   {has("configEntrega") && (

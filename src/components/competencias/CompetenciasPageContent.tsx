@@ -27,7 +27,7 @@ import type { EtapaCard, StatusCard, SituacaoFolha } from "@prisma/client";
 
 export type SortKey =
   | "empresa" | "regime" | "tipoAtividade" | "prioridade" | "filial"
-  | "etapa" | "progresso" | "prazo" | "responsavel" | "respElaboracao" | "respConferencia";
+  | "etapa" | "progresso" | "prazo" | "responsavel" | "respElaboracao" | "respConferencia" | "respEntrega";
 
 function getSortValue(c: CardItem, key: SortKey): string | number {
   switch (key) {
@@ -46,6 +46,7 @@ function getSortValue(c: CardItem, key: SortKey): string | number {
     case "responsavel":   return c.responsavel?.nome?.toLowerCase() ?? "\xff";
     case "respElaboracao":  return c.empresa.respElaboracao?.nome?.toLowerCase() ?? "\xff";
     case "respConferencia": return c.empresa.respConferencia?.nome?.toLowerCase() ?? "\xff";
+    case "respEntrega":     return c.empresa.respEntrega?.nome?.toLowerCase() ?? "\xff";
   }
 }
 
@@ -82,6 +83,7 @@ export type CardItem = {
     grupos: Array<{ grupo: { id: string; nome: string; cor: string | null; exigirAbrirCard: boolean; exigirConferencia: boolean } }>;
     respElaboracao: { id: string; nome: string; avatar: string | null } | null;
     respConferencia: { id: string; nome: string; avatar: string | null } | null;
+    respEntrega: { id: string; nome: string; avatar: string | null } | null;
   };
   prioridade: { id: string; nome: string; cor: string } | null;
   responsavel: { id: string; nome: string; avatar: string | null } | null;
@@ -170,6 +172,7 @@ export function CompetenciasPageContent({
   const [filtroEtapa, setFiltroEtapa] = useState<EtapaCard | "">("");
   const [filtroUrgente, setFiltroUrgente] = useState(false);
   const [filtroResponsavel, setFiltroResponsavel] = useState("");
+  const [filtroRespEntrega, setFiltroRespEntrega] = useState("");
   const [filtroRegime, setFiltroRegime] = useState("");
   const [filtroTipoAtv, setFiltroTipoAtv] = useState("");
   const [filtroPrioridade, setFiltroPrioridade] = useState("");
@@ -202,6 +205,7 @@ export function CompetenciasPageContent({
       if (filtroEtapa && c.etapaAtual !== filtroEtapa) return false;
       if (filtroUrgente && !c.urgente) return false;
       if (filtroResponsavel && c.responsavel?.id !== filtroResponsavel) return false;
+      if (filtroRespEntrega && c.empresa.respEntrega?.id !== filtroRespEntrega) return false;
       if (filtroRegime && c.empresa.regimeTributario?.id !== filtroRegime) return false;
       if (filtroTipoAtv && c.empresa.tipoAtividade?.id !== filtroTipoAtv) return false;
       if (filtroPrioridade && c.empresa.prioridade?.id !== filtroPrioridade) return false;
@@ -223,7 +227,7 @@ export function CompetenciasPageContent({
       }
       return true;
     });
-  }, [cards, search, filtroEtapa, filtroUrgente, filtroResponsavel, filtroRegime, filtroTipoAtv, filtroPrioridade, filtroFilial, adv]);
+  }, [cards, search, filtroEtapa, filtroUrgente, filtroResponsavel, filtroRespEntrega, filtroRegime, filtroTipoAtv, filtroPrioridade, filtroFilial, adv]);
 
   function exportarCsv() {
     const cols: { key: ColumnKey; label: string; get: (c: CardItem) => string }[] = [
@@ -236,6 +240,7 @@ export function CompetenciasPageContent({
       { key: "grupos", label: "Grupos", get: (c) => c.empresa.grupos.map((g) => g.grupo.nome).join("; ") },
       { key: "respElaboracao", label: "Resp. Elaboração", get: (c) => c.empresa.respElaboracao?.nome ?? "" },
       { key: "respConferencia", label: "Resp. Conferência", get: (c) => c.empresa.respConferencia?.nome ?? "" },
+      { key: "respEntrega", label: "Resp. Entrega", get: (c) => c.empresa.respEntrega?.nome ?? "" },
       { key: "configEntrega", label: "Config. Entrega", get: (c) => [
           c.empresa.entregaImpressa && "Impressa",
           c.empresa.entregaDigisac && "Digisac",
@@ -380,6 +385,15 @@ export function CompetenciasPageContent({
           >
             <option value="">Responsável: todos</option>
             <option value={usuarioId}>Meus cards</option>
+            {usuarios.map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
+          </select>
+
+          <select
+            value={filtroRespEntrega}
+            onChange={(e) => setFiltroRespEntrega(e.target.value)}
+            className="h-8 rounded-md border border-input bg-transparent px-2 text-sm"
+          >
+            <option value="">Resp. Entrega: todos</option>
             {usuarios.map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
           </select>
 

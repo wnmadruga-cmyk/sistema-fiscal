@@ -73,6 +73,7 @@ export async function GET(request: Request) {
           OR: [
             { empresa: { respBuscaId: usuario.id } },
             { empresa: { respElaboracaoId: usuario.id } },
+            { empresa: { respEntregaId: usuario.id } },
             { responsavelId: usuario.id },
           ],
         };
@@ -96,6 +97,7 @@ export async function GET(request: Request) {
               },
               respElaboracao: { select: { id: true, nome: true, avatar: true } },
               respConferencia: { select: { id: true, nome: true, avatar: true } },
+              respEntrega: { select: { id: true, nome: true, avatar: true } },
             },
           },
           prioridade: { select: { id: true, nome: true, cor: true } },

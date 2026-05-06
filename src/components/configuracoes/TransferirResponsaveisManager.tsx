@@ -25,6 +25,7 @@ interface Empresa {
   respBuscaId: string | null;
   respElaboracaoId: string | null;
   respConferenciaId: string | null;
+  respEntregaId: string | null;
   regimeTributarioId: string | null;
   tipoAtividadeId: string | null;
 }
@@ -52,12 +53,13 @@ interface Props {
   tiposAtividade: TipoAtividade[];
 }
 
-type Tipo = "busca" | "elaboracao" | "conferencia";
+type Tipo = "busca" | "elaboracao" | "conferencia" | "entrega";
 
 const TIPO_LABEL: Record<Tipo, string> = {
   busca: "Resp. Busca de Documentos",
   elaboracao: "Resp. Elaboração (card)",
   conferencia: "Resp. Conferência",
+  entrega: "Resp. Entrega",
 };
 
 export function TransferirResponsaveisManager({ empresas, usuarios, regimes, tiposAtividade }: Props) {
@@ -86,6 +88,7 @@ export function TransferirResponsaveisManager({ empresas, usuarios, regimes, tip
       const currentId =
         tipo === "busca" ? e.respBuscaId :
         tipo === "elaboracao" ? e.respElaboracaoId :
+        tipo === "entrega" ? e.respEntregaId :
         e.respConferenciaId;
 
       const matchResp =
@@ -129,6 +132,7 @@ export function TransferirResponsaveisManager({ empresas, usuarios, regimes, tip
   function currentField(e: Empresa) {
     if (tipo === "busca") return e.respBuscaId;
     if (tipo === "elaboracao") return e.respElaboracaoId;
+    if (tipo === "entrega") return e.respEntregaId;
     return e.respConferenciaId;
   }
 
@@ -362,7 +366,7 @@ export function TransferirResponsaveisManager({ empresas, usuarios, regimes, tip
                     <p className="text-xs text-muted-foreground">
                       {tipo === "elaboracao"
                         ? "Atualiza apenas os cards da competência informada."
-                        : "Disponível apenas para responsável de elaboração (campo do card)."}
+                        : "Disponível apenas para o tipo Elaboração (campo do card)."}
                     </p>
                   </div>
                 </label>

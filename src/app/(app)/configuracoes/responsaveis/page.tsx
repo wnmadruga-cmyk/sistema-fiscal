@@ -20,6 +20,7 @@ export default async function ResponsaveisPage() {
         respBuscaId: true,
         respElaboracaoId: true,
         respConferenciaId: true,
+        respEntregaId: true,
         regimeTributarioId: true,
         tipoAtividadeId: true,
       },

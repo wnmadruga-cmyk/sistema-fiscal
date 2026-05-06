@@ -5,7 +5,7 @@ import { z } from "zod";
 
 const schema = z.object({
   empresaIds: z.array(z.string()).min(1),
-  tipo: z.enum(["busca", "elaboracao", "conferencia"]),
+  tipo: z.enum(["busca", "elaboracao", "conferencia", "entrega"]),
   responsavelId: z.string().nullable(),
   permanente: z.boolean(),
   competencia: z.string().regex(/^\d{4}-\d{2}$/).optional(),
@@ -35,6 +35,8 @@ export async function POST(request: Request) {
       ? "respBuscaId"
       : tipo === "elaboracao"
       ? "respElaboracaoId"
+      : tipo === "entrega"
+      ? "respEntregaId"
       : "respConferenciaId";
 
     if (permanente) {

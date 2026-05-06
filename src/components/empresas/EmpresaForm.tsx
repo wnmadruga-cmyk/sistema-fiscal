@@ -145,6 +145,7 @@ export function EmpresaForm({
     respBuscaId: empresa?.respBuscaId ?? "",
     respElaboracaoId: empresa?.respElaboracaoId ?? "",
     respConferenciaId: empresa?.respConferenciaId ?? "",
+    respEntregaId: empresa?.respEntregaId ?? "",
     diaVencimentoHonorarios: empresa?.diaVencimentoHonorarios?.toString() ?? "",
     situacaoFolha: empresa?.situacaoFolha ?? "NAO_TEM",
     fatorR: empresa?.fatorR ?? false,
@@ -204,6 +205,7 @@ export function EmpresaForm({
       respBuscaId: form.respBuscaId || undefined,
       respElaboracaoId: form.respElaboracaoId || undefined,
       respConferenciaId: form.respConferenciaId || undefined,
+      respEntregaId: form.respEntregaId || undefined,
     };
 
     const isEdit = !!empresa?.id;
@@ -465,7 +467,8 @@ export function EmpresaForm({
             <CardContent className="space-y-4">
               {[
                 { label: "Responsável pela Busca", field: "respBuscaId" },
-                { label: "Responsável pela Elaboração/Entrega", field: "respElaboracaoId" },
+                { label: "Responsável pela Elaboração", field: "respElaboracaoId" },
+                { label: "Responsável pela Entrega", field: "respEntregaId" },
                 { label: "Responsável pela Conferência", field: "respConferenciaId" },
               ].map(({ label, field }) => (
                 <div key={field} className="space-y-1">

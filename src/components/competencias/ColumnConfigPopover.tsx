@@ -14,6 +14,7 @@ export type ColumnKey =
   | "grupos"
   | "respElaboracao"
   | "respConferencia"
+  | "respEntrega"
   | "configEntrega"
   | "etapa"
   | "etapasInline"
@@ -52,6 +53,7 @@ const ALL_COLUMNS: { key: ColumnKey; label: string; group?: string }[] = [
   { key: "grupos", label: "Grupos" },
   { key: "respElaboracao", label: "Resp. Elaboração" },
   { key: "respConferencia", label: "Resp. Conferência" },
+  { key: "respEntrega", label: "Resp. Entrega" },
   { key: "configEntrega", label: "Config. Entrega" },
   { key: "etapa", label: "Etapa atual" },
   { key: "etapasInline", label: "Etapas (inline)" },
