@@ -123,15 +123,16 @@ export function DashboardContent({ usuarioNome, usuarioPerfil, competencia, gest
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">Olá, {primeiroNome}</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Competência em foco:{" "}
-            <Link href={`/competencias?competencia=${competencia}`} className="font-medium text-primary hover:underline">
-              {competenciaLabel(competencia)}
-            </Link>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground mt-0.5">
+            <span>Competência em foco:{" "}
+              <Link href={`/competencias?competencia=${competencia}`} className="font-medium text-primary hover:underline">
+                {competenciaLabel(competencia)}
+              </Link>
+            </span>
             {isPrivileged && (
-              <Badge variant="secondary" className="ml-2 text-xs">{usuarioPerfil}</Badge>
+              <Badge variant="secondary" className="text-xs">{usuarioPerfil}</Badge>
             )}
-          </p>
+          </div>
         </div>
       </div>
 
