@@ -14,16 +14,8 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Loader2, Building2, Globe, Mail, FileText, Pause } from "lucide-react";
-
-type EtapaCard =
-  | "BUSCA_DOCUMENTOS"
-  | "CONFERENCIA_APURACAO"
-  | "CONFERENCIA"
-  | "TRANSMISSAO"
-  | "ENVIO"
-  | "ENVIO_ACESSORIAS"
-  | "IMPRESSAO_PROTOCOLO"
-  | "CONCLUIDO";
+import type { EtapaCard } from "@prisma/client";
+import { ORDEM_ETAPAS, LABEL_ETAPA } from "@/lib/competencia-utils";
 
 type TipoRegraFluxo =
   | "ORIGEM_ESCRITORIO"
@@ -46,16 +38,10 @@ interface EtiquetaOpt {
   cor: string;
 }
 
-const ETAPAS: { value: EtapaCard; label: string }[] = [
-  { value: "BUSCA_DOCUMENTOS",     label: "Busca de Documentos" },
-  { value: "CONFERENCIA_APURACAO", label: "Conferência e Apuração" },
-  { value: "CONFERENCIA",          label: "Conferência" },
-  { value: "TRANSMISSAO",          label: "Transmissão" },
-  { value: "ENVIO",                label: "Envio" },
-  { value: "ENVIO_ACESSORIAS",     label: "Enviado via Acessorias" },
-  { value: "IMPRESSAO_PROTOCOLO",  label: "Impressão e Protocolo" },
-  { value: "CONCLUIDO",            label: "Concluído" },
-];
+const ETAPAS: { value: EtapaCard; label: string }[] = ORDEM_ETAPAS.map((etapa) => ({
+  value: etapa,
+  label: LABEL_ETAPA[etapa],
+}));
 
 const REGRAS_CONFIG: {
   tipo: TipoRegraFluxo;
