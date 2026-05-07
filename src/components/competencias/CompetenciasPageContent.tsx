@@ -441,14 +441,9 @@ export function CompetenciasPageContent({
             className="h-8 rounded-md border border-input bg-transparent px-2 text-sm"
           >
             <option value="">Etapa: todas</option>
-            <option value="BUSCA_DOCUMENTOS">Busca de Documentos</option>
-            <option value="CONFERENCIA_APURACAO">Conferência/Apuração</option>
-            <option value="CONFERENCIA">Conferência</option>
-            <option value="TRANSMISSAO">Transmissão</option>
-            <option value="ENVIO">Envio</option>
-            <option value="ENVIO_ACESSORIAS">Enviado via Acessorias</option>
-            <option value="IMPRESSAO_PROTOCOLO">Impressão e Protocolo</option>
-            <option value="CONCLUIDO">Concluído</option>
+            {ORDEM_ETAPAS.map((etapa) => (
+              <option key={etapa} value={etapa}>{LABEL_ETAPA[etapa]}</option>
+            ))}
           </select>
 
           <button
