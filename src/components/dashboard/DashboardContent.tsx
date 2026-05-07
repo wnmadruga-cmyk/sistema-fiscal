@@ -94,6 +94,8 @@ interface Props {
   competencia: string;
   gestorData: GestorData | null;
   operacionalData: OperacionalData | null;
+  onPrev: () => void;
+  onNext: () => void;
 }
 
 // ─── cores das etapas ────────────────────────────────────────────────────────
@@ -113,7 +115,7 @@ const ETAPA_COR: Record<string, string> = {
 
 // ─── componente principal ─────────────────────────────────────────────────────
 
-export function DashboardContent({ usuarioNome, usuarioPerfil, competencia, gestorData, operacionalData }: Props) {
+export function DashboardContent({ usuarioNome, usuarioPerfil, competencia, gestorData, operacionalData, onPrev, onNext }: Props) {
   const isPrivileged = usuarioPerfil === "ADMIN" || usuarioPerfil === "GERENTE";
   const primeiroNome = usuarioNome.split(" ")[0];
 
@@ -123,16 +125,34 @@ export function DashboardContent({ usuarioNome, usuarioPerfil, competencia, gest
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">Olá, {primeiroNome}</h1>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground mt-0.5">
-            <span>Competência em foco:{" "}
-              <Link href={`/competencias?competencia=${competencia}`} className="font-medium text-primary hover:underline">
-                {competenciaLabel(competencia)}
-              </Link>
-            </span>
-            {isPrivileged && (
-              <Badge variant="secondary" className="text-xs">{usuarioPerfil}</Badge>
-            )}
-          </div>
+          {isPrivileged && (
+            <Badge variant="secondary" className="text-xs mt-1">{usuarioPerfil}</Badge>
+          )}
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={onPrev}
+            className="p-1.5 rounded hover:bg-muted transition-colors"
+            aria-label="Mês anterior"
+          >
+            <ChevronRight className="h-4 w-4 rotate-180" />
+          </button>
+          <Link
+            href={`/competencias?competencia=${competencia}`}
+            className="px-3 py-1.5 rounded text-sm font-medium hover:bg-muted transition-colors flex items-center gap-1.5"
+          >
+            <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+            {competenciaLabel(competencia)}
+          </Link>
+          <button
+            type="button"
+            onClick={onNext}
+            className="p-1.5 rounded hover:bg-muted transition-colors"
+            aria-label="Próximo mês"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
         </div>
       </div>
 

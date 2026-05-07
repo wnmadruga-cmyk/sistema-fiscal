@@ -1,8 +1,9 @@
 import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ok, serverError, unauthorized } from "@/lib/api-response";
-import { competenciaAtual } from "@/lib/competencia-utils";
+import { competenciaAtual, competenciaAnterior } from "@/lib/competencia-utils";
 import { addDays } from "date-fns";
+import { NextRequest } from "next/server";
 
 function workingDaysInMonth(year: number, month: number): number {
   const days = new Date(year, month, 0).getDate();
@@ -25,18 +26,6 @@ function workingDaysElapsed(year: number, month: number, today: Date): number {
     if (wd !== 0 && wd !== 6) count++;
   }
   return count;
-}
-
-async function getCompetenciaAtiva(escritorioId: string): Promise<string> {
-  const card = await prisma.competenciaCard.findFirst({
-    where: {
-      empresa: { escritorioId },
-      status: { notIn: ["CONCLUIDO", "CANCELADO"] },
-    },
-    orderBy: { competencia: "desc" },
-    select: { competencia: true },
-  });
-  return card?.competencia ?? competenciaAtual();
 }
 
 async function getDashboardGestor(usuarioId: string, escritorioId: string, competencia: string) {
@@ -293,11 +282,12 @@ async function getDashboardOperacional(usuarioId: string, escritorioId: string, 
   };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const { usuario } = await requireAuth();
     const isPrivileged = usuario.perfil === "ADMIN" || usuario.perfil === "GERENTE";
-    const competencia = await getCompetenciaAtiva(usuario.escritorioId);
+    const param = request.nextUrl.searchParams.get("competencia");
+    const competencia = param ?? competenciaAnterior(competenciaAtual());
 
     const [gestorData, operacionalData] = await Promise.all([
       isPrivileged ? getDashboardGestor(usuario.id, usuario.escritorioId, competencia) : Promise.resolve(null),
