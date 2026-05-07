@@ -184,6 +184,7 @@ type GrupoComEtapa = {
 type RegraFluxo = {
   tipo: string;
   etapaInicial: EtapaCard;
+  etiquetaId: string | null;
 };
 
 function isPortalNacionalOuSemDocs(empresa: EmpresaComDocs): boolean {
@@ -200,46 +201,44 @@ function resolverEtapaInicial(
   empresa: EmpresaComDocs,
   grupos: GrupoComEtapa[],
   regras: RegraFluxo[]
-): EtapaCard {
+): { etapa: EtapaCard; etiquetaId: string | null } {
   // 0. Sem documentos fiscais OU apenas NFS-e via Portal Nacional → sempre CONFERENCIA_APURACAO
-  if (isPortalNacionalOuSemDocs(empresa)) return EtapaCard.CONFERENCIA_APURACAO;
+  if (isPortalNacionalOuSemDocs(empresa)) return { etapa: EtapaCard.CONFERENCIA_APURACAO, etiquetaId: null };
 
-  // 1. Grupo com etapaInicial definida tem prioridade máxima
+  // 1. Grupo com etapaInicial definida tem prioridade máxima (grupos não têm etiqueta)
   const grupoComEtapa = grupos.find((g) => g.etapaInicial != null);
-  if (grupoComEtapa?.etapaInicial) return grupoComEtapa.etapaInicial;
+  if (grupoComEtapa?.etapaInicial) return { etapa: grupoComEtapa.etapaInicial, etiquetaId: null };
 
-  if (regras.length === 0) return EtapaCard.BUSCA_DOCUMENTOS;
+  if (regras.length === 0) return { etapa: EtapaCard.BUSCA_DOCUMENTOS, etiquetaId: null };
 
   const docs = empresa.configDocumentos;
 
   for (const regra of regras) {
     switch (regra.tipo) {
       case "ORIGEM_ESCRITORIO":
-        if (docs.some((d) => d.origem === "ESCRITORIO")) return regra.etapaInicial;
+        if (docs.some((d) => d.origem === "ESCRITORIO"))
+          return { etapa: regra.etapaInicial, etiquetaId: regra.etiquetaId };
         break;
       case "ORIGEM_TERCEIROS_ACESSO":
         if (docs.some((d) => d.origem === "TERCEIROS" && d.formaChegada === "ACESSO"))
-          return regra.etapaInicial;
+          return { etapa: regra.etapaInicial, etiquetaId: regra.etiquetaId };
         break;
       case "ORIGEM_RECEITA_PR":
-        if (
-          docs.some(
-            (d) =>
-              d.formaChegadaConfig?.nome?.toLowerCase().includes("receita")
-          )
-        )
-          return regra.etapaInicial;
+        if (docs.some((d) => d.formaChegadaConfig?.nome?.toLowerCase().includes("receita")))
+          return { etapa: regra.etapaInicial, etiquetaId: regra.etiquetaId };
         break;
       case "ORIGEM_EMAIL_WHATSAPP":
-        if (docs.some((d) => d.formaChegada === "EMAIL")) return regra.etapaInicial;
+        if (docs.some((d) => d.formaChegada === "EMAIL"))
+          return { etapa: regra.etapaInicial, etiquetaId: regra.etiquetaId };
         break;
       case "SEM_MOVIMENTO_TEMP":
-        if (empresa.semMovimentoTemp) return regra.etapaInicial;
+        if (empresa.semMovimentoTemp)
+          return { etapa: regra.etapaInicial, etiquetaId: regra.etiquetaId };
         break;
     }
   }
 
-  return EtapaCard.BUSCA_DOCUMENTOS;
+  return { etapa: EtapaCard.BUSCA_DOCUMENTOS, etiquetaId: null };
 }
 
 function isoToDate(iso: string): Date {
@@ -304,6 +303,7 @@ async function gerar(opts: {
       prioridadeId: string | null;
       respElaboracaoId: string | null;
       etapaInicial: EtapaCard;
+      etiquetaId: string | null;
       etapasCreate: {
         etapa: EtapaCard;
         status: StatusEtapa;
@@ -326,15 +326,11 @@ async function gerar(opts: {
         prazo = calcPrazo(competencia, empresa.prioridade?.diasPrazo ?? 0);
       }
 
-      const docs = empresa.configDocumentos;
-      const etapaInicial = resolverEtapaInicial(empresa, grupos, regrasFluxo);
+      const { etapa: etapaInicial, etiquetaId } = resolverEtapaInicial(empresa, grupos, regrasFluxo);
 
       const etapasOrdenadas = etapasParaCard({
         exigirConferencia: empresa.exigirConferencia || grupos.some((g) => (g as unknown as { exigirConferencia: boolean }).exigirConferencia),
         exigirImpressao: empresa.entregaImpressa,
-        incluiBaixarNotasAcesso: docs.some((d) => d.origem === "TERCEIROS" && d.formaChegada === "ACESSO") || etapaInicial === EtapaCard.BAIXAR_NOTAS_ACESSO,
-        incluiPedirNotasReceita: docs.some((d) => d.formaChegadaConfig?.nome?.toLowerCase().includes("receita")) || etapaInicial === EtapaCard.PEDIR_NOTAS_RECEITA_PR,
-        incluiPossiveisSemMovimento: empresa.semMovimentoTemp || etapaInicial === EtapaCard.POSSIVEIS_SEM_MOVIMENTO,
       });
 
       const etapaInicialIdx = etapasOrdenadas.indexOf(etapaInicial);
@@ -356,7 +352,7 @@ async function gerar(opts: {
         };
       });
 
-      return { empresaId: empresa.id, prazo, prioridadeId: empresa.prioridadeId, respElaboracaoId: empresa.respElaboracaoId, etapaInicial, etapasCreate };
+      return { empresaId: empresa.id, prazo, prioridadeId: empresa.prioridadeId, respElaboracaoId: empresa.respElaboracaoId, etapaInicial, etiquetaId, etapasCreate };
     });
 
     console.log(`[gerar] competencia=${competencia} total_empresas=${payloads.length}`);
@@ -378,6 +374,9 @@ async function gerar(opts: {
               responsavelId: p.respElaboracaoId,
               etapaAtual: p.etapaInicial,
               etapas: { create: p.etapasCreate },
+              ...(p.etiquetaId && {
+                etiquetas: { create: { etiquetaId: p.etiquetaId } },
+              }),
             },
             update: { prazo: p.prazo },
           })

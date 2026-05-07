@@ -110,8 +110,9 @@ model Etiqueta {
   ativo     Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  empresaEtiquetas EmpresaEtiqueta[]
-  cardEtiquetas    CardEtiqueta[]
+  empresaEtiquetas   EmpresaEtiqueta[]
+  cardEtiquetas      CardEtiqueta[]
+  regrasFluxo        RegraFluxoInicial[]
 
   @@map("etiquetas")
 }
@@ -293,11 +294,13 @@ model RegraFluxoInicial {
   escritorioId String
   tipo         TipoRegraFluxo
   etapaInicial EtapaCard
+  etiquetaId   String?
   ativo        Boolean        @default(true)
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
   escritorio Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+  etiqueta   Etiqueta?  @relation(fields: [etiquetaId], references: [id])
 
   @@unique([escritorioId, tipo])
   @@map("regras_fluxo_inicial")

@@ -12,15 +12,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Loader2, Building2, Globe, Mail, FileText, Pause } from "lucide-react";
 
 type EtapaCard =
   | "BUSCA_DOCUMENTOS"
-  | "BAIXAR_NOTAS_ACESSO"
-  | "PEDIR_NOTAS_RECEITA_PR"
-  | "POSSIVEIS_SEM_MOVIMENTO"
   | "CONFERENCIA_APURACAO"
   | "CONFERENCIA"
   | "TRANSMISSAO"
@@ -40,21 +36,25 @@ interface RegraFluxoInicial {
   id: string;
   tipo: TipoRegraFluxo;
   etapaInicial: EtapaCard;
+  etiquetaId: string | null;
   ativo: boolean;
 }
 
+interface EtiquetaOpt {
+  id: string;
+  nome: string;
+  cor: string;
+}
+
 const ETAPAS: { value: EtapaCard; label: string }[] = [
-  { value: "BUSCA_DOCUMENTOS",        label: "Busca de Documentos" },
-  { value: "BAIXAR_NOTAS_ACESSO",     label: "Baixar Notas Acesso Sistema" },
-  { value: "PEDIR_NOTAS_RECEITA_PR",  label: "Pedir Notas Receita PR" },
-  { value: "POSSIVEIS_SEM_MOVIMENTO", label: "Possíveis Sem Movimento" },
-  { value: "CONFERENCIA_APURACAO",    label: "Conferência e Apuração" },
-  { value: "CONFERENCIA",             label: "Conferência" },
-  { value: "TRANSMISSAO",             label: "Transmissão" },
-  { value: "ENVIO",                   label: "Envio" },
-  { value: "ENVIO_ACESSORIAS",        label: "Enviado via Acessorias" },
-  { value: "IMPRESSAO_PROTOCOLO",     label: "Impressão e Protocolo" },
-  { value: "CONCLUIDO",               label: "Concluído" },
+  { value: "BUSCA_DOCUMENTOS",     label: "Busca de Documentos" },
+  { value: "CONFERENCIA_APURACAO", label: "Conferência e Apuração" },
+  { value: "CONFERENCIA",          label: "Conferência" },
+  { value: "TRANSMISSAO",          label: "Transmissão" },
+  { value: "ENVIO",                label: "Envio" },
+  { value: "ENVIO_ACESSORIAS",     label: "Enviado via Acessorias" },
+  { value: "IMPRESSAO_PROTOCOLO",  label: "Impressão e Protocolo" },
+  { value: "CONCLUIDO",            label: "Concluído" },
 ];
 
 const REGRAS_CONFIG: {
@@ -101,26 +101,35 @@ const REGRAS_CONFIG: {
   },
 ];
 
-export function FluxoInicialManager({ initial }: { initial: RegraFluxoInicial[] }) {
+export function FluxoInicialManager({
+  initial,
+  etiquetas,
+}: {
+  initial: RegraFluxoInicial[];
+  etiquetas: EtiquetaOpt[];
+}) {
   const router = useRouter();
 
-  // Map tipo → etapaInicial (null = sem regra)
   const [valores, setValores] = useState<Partial<Record<TipoRegraFluxo, EtapaCard | null>>>(() => {
     const m: Partial<Record<TipoRegraFluxo, EtapaCard | null>> = {};
-    for (const r of initial) {
-      m[r.tipo] = r.etapaInicial;
-    }
+    for (const r of initial) m[r.tipo] = r.etapaInicial;
+    return m;
+  });
+
+  const [etiquetas_, setEtiquetas_] = useState<Partial<Record<TipoRegraFluxo, string | null>>>(() => {
+    const m: Partial<Record<TipoRegraFluxo, string | null>> = {};
+    for (const r of initial) m[r.tipo] = r.etiquetaId;
     return m;
   });
 
   const [saving, setSaving] = useState<TipoRegraFluxo | null>(null);
 
-  async function salvar(tipo: TipoRegraFluxo, etapaInicial: EtapaCard | null) {
+  async function salvar(tipo: TipoRegraFluxo, etapaInicial: EtapaCard | null, etiquetaId?: string | null) {
     setSaving(tipo);
     const res = await fetch("/api/configuracoes/fluxo-inicial", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tipo, etapaInicial }),
+      body: JSON.stringify({ tipo, etapaInicial, etiquetaId: etiquetaId ?? null }),
     });
     setSaving(null);
     if (!res.ok) {
@@ -132,10 +141,16 @@ export function FluxoInicialManager({ initial }: { initial: RegraFluxoInicial[] 
     router.refresh();
   }
 
-  function handleChange(tipo: TipoRegraFluxo, valor: string) {
+  function handleEtapaChange(tipo: TipoRegraFluxo, valor: string) {
     const etapa = valor === "__none__" ? null : (valor as EtapaCard);
     setValores((v) => ({ ...v, [tipo]: etapa }));
-    salvar(tipo, etapa);
+    salvar(tipo, etapa, etiquetas_[tipo]);
+  }
+
+  function handleEtiquetaChange(tipo: TipoRegraFluxo, valor: string) {
+    const etiquetaId = valor === "__none__" ? null : valor;
+    setEtiquetas_((v) => ({ ...v, [tipo]: etiquetaId }));
+    salvar(tipo, valores[tipo] ?? "BUSCA_DOCUMENTOS", etiquetaId);
   }
 
   const nfRegras = REGRAS_CONFIG.filter((r) => r.categoria === "nf");
@@ -143,54 +158,94 @@ export function FluxoInicialManager({ initial }: { initial: RegraFluxoInicial[] 
 
   function renderRegra(config: (typeof REGRAS_CONFIG)[0]) {
     const Icon = config.icon;
-    const valor = valores[config.tipo];
+    const etapa = valores[config.tipo];
+    const etiquetaId = etiquetas_[config.tipo];
+    const etiquetaSel = etiquetas.find((e) => e.id === etiquetaId);
     const isSaving = saving === config.tipo;
 
     return (
       <Card key={config.tipo} className="border">
         <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-            <div className="flex items-start gap-3 flex-1 min-w-0">
+          <div className="flex flex-col gap-3">
+            <div className="flex items-start gap-3">
               <div className="p-2 rounded-lg bg-muted shrink-0">
                 <Icon className="h-4 w-4 text-muted-foreground" />
               </div>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <div className="font-medium text-sm flex items-center gap-2 flex-wrap">
                   {config.label}
-                  {valor ? (
-                    <Badge variant="secondary" className="text-xs">
-                      Inicia em: {ETAPAS.find((e) => e.value === valor)?.label}
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-xs text-muted-foreground">
-                      Padrão (Busca de Documentos)
-                    </Badge>
-                  )}
+                  {isSaving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5">{config.descricao}</p>
               </div>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              {isSaving && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-              <Select
-                value={valor ?? "__none__"}
-                onValueChange={(v) => handleChange(config.tipo, v)}
-                disabled={isSaving}
-              >
-                <SelectTrigger className="w-[220px]">
-                  <SelectValue placeholder="Etapa inicial..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">
-                    <span className="text-muted-foreground">Padrão (Busca de Documentos)</span>
-                  </SelectItem>
-                  {ETAPAS.map((e) => (
-                    <SelectItem key={e.value} value={e.value}>
-                      {e.label}
+
+            <div className="flex flex-col sm:flex-row gap-2 pl-11">
+              {/* Etapa inicial */}
+              <div className="flex-1">
+                <p className="text-xs text-muted-foreground mb-1">Etapa inicial</p>
+                <Select
+                  value={etapa ?? "__none__"}
+                  onValueChange={(v) => handleEtapaChange(config.tipo, v)}
+                  disabled={isSaving}
+                >
+                  <SelectTrigger className="h-8 text-sm">
+                    <SelectValue placeholder="Etapa inicial..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">
+                      <span className="text-muted-foreground">Padrão (Busca de Documentos)</span>
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    {ETAPAS.map((e) => (
+                      <SelectItem key={e.value} value={e.value}>
+                        {e.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Etiqueta a atribuir */}
+              <div className="flex-1">
+                <p className="text-xs text-muted-foreground mb-1">Etiqueta automática</p>
+                <Select
+                  value={etiquetaId ?? "__none__"}
+                  onValueChange={(v) => handleEtiquetaChange(config.tipo, v)}
+                  disabled={isSaving}
+                >
+                  <SelectTrigger className="h-8 text-sm">
+                    <SelectValue placeholder="Nenhuma etiqueta">
+                      {etiquetaSel ? (
+                        <span className="flex items-center gap-1.5">
+                          <span
+                            className="h-2.5 w-2.5 rounded-full shrink-0 inline-block"
+                            style={{ backgroundColor: etiquetaSel.cor }}
+                          />
+                          {etiquetaSel.nome}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">Nenhuma etiqueta</span>
+                      )}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">
+                      <span className="text-muted-foreground">Nenhuma etiqueta</span>
+                    </SelectItem>
+                    {etiquetas.map((e) => (
+                      <SelectItem key={e.id} value={e.id}>
+                        <span className="flex items-center gap-1.5">
+                          <span
+                            className="h-2.5 w-2.5 rounded-full shrink-0 inline-block"
+                            style={{ backgroundColor: e.cor }}
+                          />
+                          {e.nome}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
         </CardContent>

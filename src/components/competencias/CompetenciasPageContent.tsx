@@ -117,7 +117,7 @@ interface CompetenciasPageContentProps {
 
 type AdvFilters = {
   grupoId: string;
-  etiquetaId: string;
+  etiquetaIds: string[];
   situacaoFolha: SituacaoFolha | "";
   fatorR: "" | "sim" | "nao";
   fechaAutomatico: "" | "sim" | "nao";
@@ -131,7 +131,7 @@ type AdvFilters = {
 
 const advEmpty: AdvFilters = {
   grupoId: "",
-  etiquetaId: "",
+  etiquetaIds: [],
   situacaoFolha: "",
   fatorR: "",
   fechaAutomatico: "",
@@ -212,7 +212,7 @@ export function CompetenciasPageContent({
       if (filtroFilial && c.empresa.filial?.id !== filtroFilial) return false;
 
       if (adv.grupoId && !c.empresa.grupos.some((g) => g.grupo.id === adv.grupoId)) return false;
-      if (adv.etiquetaId && !c.etiquetas.some((e) => e.etiqueta.id === adv.etiquetaId)) return false;
+      if (adv.etiquetaIds.length > 0 && !c.etiquetas.some((e) => adv.etiquetaIds.includes(e.etiqueta.id))) return false;
       if (adv.situacaoFolha && c.empresa.situacaoFolha !== adv.situacaoFolha) return false;
       if (!boolMatch(c.empresa.fatorR, adv.fatorR)) return false;
       if (!boolMatch(c.empresa.fechaAutomatico, adv.fechaAutomatico)) return false;
@@ -294,7 +294,9 @@ export function CompetenciasPageContent({
 
   const urgentesCount = cards.filter((c) => c.urgente).length;
   const concluidosCount = cards.filter((c) => c.status === "CONCLUIDO").length;
-  const advCount = Object.values(adv).filter((v) => v !== "").length;
+  const advCount = Object.entries(adv).filter(([k, v]) =>
+    k === "etiquetaIds" ? (v as string[]).length > 0 : v !== ""
+  ).length;
 
   const cardsSorted = useMemo(() => {
     if (!sortKey) return cardsFiltrados;
@@ -439,11 +441,13 @@ export function CompetenciasPageContent({
             className="h-8 rounded-md border border-input bg-transparent px-2 text-sm"
           >
             <option value="">Etapa: todas</option>
-            <option value="BUSCA_DOCUMENTOS">Busca</option>
+            <option value="BUSCA_DOCUMENTOS">Busca de Documentos</option>
             <option value="CONFERENCIA_APURACAO">Conferência/Apuração</option>
             <option value="CONFERENCIA">Conferência</option>
             <option value="TRANSMISSAO">Transmissão</option>
             <option value="ENVIO">Envio</option>
+            <option value="ENVIO_ACESSORIAS">Enviado via Acessorias</option>
+            <option value="IMPRESSAO_PROTOCOLO">Impressão e Protocolo</option>
             <option value="CONCLUIDO">Concluído</option>
           </select>
 
@@ -480,10 +484,44 @@ export function CompetenciasPageContent({
               <option value="">Grupo: qualquer</option>
               {grupos.map((g) => <option key={g.id} value={g.id}>{g.nome}</option>)}
             </select>
-            <select value={adv.etiquetaId} onChange={(e) => setAdv({ ...adv, etiquetaId: e.target.value })} className="h-8 rounded-md border border-input bg-transparent px-2 text-sm">
-              <option value="">Etiqueta: qualquer</option>
-              {etiquetas.map((e) => <option key={e.id} value={e.id}>{e.nome}</option>)}
-            </select>
+            {/* Multi-select etiquetas */}
+            <div className="col-span-2 md:col-span-1">
+              <div className="text-xs text-muted-foreground mb-1">Etiquetas</div>
+              <div className="flex flex-wrap gap-1">
+                {etiquetas.map((e) => {
+                  const sel = adv.etiquetaIds.includes(e.id);
+                  return (
+                    <button
+                      key={e.id}
+                      type="button"
+                      onClick={() =>
+                        setAdv({
+                          ...adv,
+                          etiquetaIds: sel
+                            ? adv.etiquetaIds.filter((id) => id !== e.id)
+                            : [...adv.etiquetaIds, e.id],
+                        })
+                      }
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-colors ${
+                        sel
+                          ? "border-transparent text-white"
+                          : "border-input bg-transparent hover:bg-muted"
+                      }`}
+                      style={sel ? { backgroundColor: e.cor, borderColor: e.cor } : {}}
+                    >
+                      <span
+                        className="h-2 w-2 rounded-full shrink-0"
+                        style={{ backgroundColor: sel ? "rgba(255,255,255,0.7)" : e.cor }}
+                      />
+                      {e.nome}
+                    </button>
+                  );
+                })}
+                {etiquetas.length === 0 && (
+                  <span className="text-xs text-muted-foreground">Nenhuma etiqueta cadastrada</span>
+                )}
+              </div>
+            </div>
             <select value={adv.situacaoFolha} onChange={(e) => setAdv({ ...adv, situacaoFolha: e.target.value as SituacaoFolha | "" })} className="h-8 rounded-md border border-input bg-transparent px-2 text-sm">
               <option value="">Folha: qualquer</option>
               <option value="NAO_TEM">Não tem</option>

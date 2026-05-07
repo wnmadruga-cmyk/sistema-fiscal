@@ -9,10 +9,17 @@ export default async function FluxoInicialPage() {
   const { supabaseUser, usuario } = await getAuthUser();
   if (!supabaseUser || !usuario) redirect("/login");
 
-  const regras = await prisma.regraFluxoInicial.findMany({
-    where: { escritorioId: usuario.escritorioId },
-    orderBy: { tipo: "asc" },
-  });
+  const [regras, etiquetas] = await Promise.all([
+    prisma.regraFluxoInicial.findMany({
+      where: { escritorioId: usuario.escritorioId },
+      orderBy: { tipo: "asc" },
+    }),
+    prisma.etiqueta.findMany({
+      where: { ativo: true },
+      orderBy: { nome: "asc" },
+      select: { id: true, nome: true, cor: true },
+    }),
+  ]);
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -27,8 +34,10 @@ export default async function FluxoInicialPage() {
           id: r.id,
           tipo: r.tipo,
           etapaInicial: r.etapaInicial,
+          etiquetaId: r.etiquetaId ?? null,
           ativo: r.ativo,
         }))}
+        etiquetas={etiquetas}
       />
     </div>
   );
